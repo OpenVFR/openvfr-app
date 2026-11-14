@@ -59,7 +59,7 @@ import {
 import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import { legSpans, legMsaList, legBelowMsa, dragShownFt, withLegLevel, altAtY, unreachedLegs, verticalPhaseMarks, LEVEL_STEP_FT, DRAG_MIN_MOVE_PX, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
-import { obstacleSymbol, batchSymbolPaths, obstacleXScale } from '@open-vfr/shared/obstacleSymbol'
+import { obstacleSymbol, batchSymbolPaths, obstacleXScale, symbolHalfWidth } from '@open-vfr/shared/obstacleSymbol'
 import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
 import { carryLookaheadTerrain } from '@open-vfr/shared/lookaheadTerrain'
 import { plannedLineEnds } from '@open-vfr/shared/pathAhead'
@@ -81,7 +81,7 @@ import {
 import { plannedAltitudesAlongTrack, type FlightLogRoute } from '@open-vfr/shared/flightLogRoute'
 import { createValueStore, useStoreValue, type ValueStore } from '../utils/valueStore'
 import {
-  profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, profileYMin, liveAltitudeWindow, declutterMarks, obstacleOpacity, obstacleShownOnChart, isLimitingObstacle, altitudeTicksFrom, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
+  profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, profileYMin, liveAltitudeWindow, declutterSymbols, profileSymbolPriority, obstacleOpacity, obstacleShownOnChart, isLimitingObstacle, altitudeTicksFrom, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
 } from '@open-vfr/shared/profileChart'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
 import { airspaceOutlines, airspaceChips, layoutAirspaceChips } from '@open-vfr/shared/airspaceOutline'
@@ -257,6 +257,8 @@ const LANDMARK_SHAPE_KIND: Record<string, string> = {
 
 /** A touch within this many px of a leg's drawn line starts a level drag (if it moves vertically). */
 const LEG_HIT_PX = 22
+/** Half width of an aerodrome / navaid / reporting-point symbol on the chart (obstacles keep clear of it). */
+const POI_HALF_W_PX = 6
 /** Axis / tick label size (px). */
 const AXIS_FONT = 11
 /** Waypoint-name label font (px); its box is ~6.8 px per character (12 px semibold), capped. */
@@ -962,9 +964,11 @@ const ProfileCStatic = React.memo(function ProfileCStatic({
 }: any) {
   // One path per layer and paint instead of an element per primitive of every obstacle (see batchSymbolPaths).
   const shapePaths = useMemo(
+    // Only the symbols that won a slot (declutterSymbols); the rest are dots, drawn below. Drawing every shape here
+    // used to ignore the declutter entirely: a city filled the start of the chart with overlapping pictures.
     () => batchSymbolPaths([
-      ...landmarkMarks.map((m: any) => ({ cx: m.cx, shape: m.shape, opacity: m.estimated ? 0.85 : 1, scaleX: 1 })),
-      ...obstacleMarks.map((m: any) => ({ cx: m.cx, shape: m.shape, opacity: m.opacity, scaleX: obstacleXScale(m.kind) })),
+      ...landmarkMarks.filter((m: any) => m.full).map((m: any) => ({ cx: m.cx, shape: m.shape, opacity: m.estimated ? 0.85 : 1, scaleX: 1 })),
+      ...obstacleMarks.filter((m: any) => m.full).map((m: any) => ({ cx: m.cx, shape: m.shape, opacity: m.opacity, scaleX: obstacleXScale(m.kind) })),
     ]),
     [landmarkMarks, obstacleMarks],
   )
@@ -1008,10 +1012,11 @@ const ProfileCStatic = React.memo(function ProfileCStatic({
                 {landmarkMarks.map((m: any) => {
                   const icon = LANDMARK_ICONS[m.kind] ?? LANDMARK_ICON_FALLBACK
                   const size = 14
-                  if (m.shape) return null   // drawn in the shape layer below
                   if (!m.full) {
-                    return <View key={m.key} style={{ position: 'absolute', width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(150,150,150,0.8)', left: m.cx - 1.5, top: m.cy - 3 }} />
+                    // Crowded: a dot at the tip (like the obstacles), so its height stays on the chart.
+                    return <View key={m.key} style={{ position: 'absolute', width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(150,150,150,0.8)', left: m.cx - 1.5, top: m.tipY - 1.5 }} />
                   }
+                  if (m.shape) return null   // drawn in the shape layer below
                   return (
                     // Anchor by BOTTOM edge, not center -- m.cy is ground.
                     <Image
@@ -1612,7 +1617,7 @@ export const VerticalProfile = React.memo(function VerticalProfile({
       // The symbol spans the true tip altitude down to the real ground (symbolGroundY).
       const symY = symbolGroundY(cy, groundY, plotBottom)
       return [{
-        key: `obs-${i}`, kind: o.kind, cx, cy, groundY,
+        key: `obs-${i}`, kind: o.kind, cx, cy, groundY, tipFt, lateralNm: o.lateralNm,
         opacity: obstacleOpacity(o.lateralNm, margins.abeamNm) * (eh.estimated ? 0.85 : 1), limiting,
         priority: limiting ? 1e9 + tipFt : tipFt, full: false, estimated: eh.estimated,
         label: limiting && showObstLabels ? limitingObstacleLabel(o.kind, o.name, tipFt, eh.estimated) : '', labelPos: undefined as PlacedLabel | undefined, leader: false,
@@ -1621,22 +1626,19 @@ export const VerticalProfile = React.memo(function VerticalProfile({
     })
     // Limiting obstacles close together (a wind farm) share one label ("+1").
     mergeNearbyLabels(obs, LIMITING_LABEL_MERGE_PX)
-    const obsFull = declutterMarks(obs.map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), 14)
-    obs.forEach((m) => { m.full = obsFull.has(m.key) })
     const lmk = (profile?.landmarks ?? []).map((l, i) => {
       // Floor at 0: landmarks rely purely on terrainAt(), which can go
       // negative from DEM noise over/near water.
       const baseFt = Math.max(0, terrainAt(terrainPts, l.distNm))
       const eh = effectiveHeight(l.kind, l.heightM)
       const cx = clampX(xOf(l.distNm), 7), groundY = yOf(baseFt)
-      const tipY = yOf(Math.round(baseFt + eh.heightM * FT_PER_M))
+      const tipFt = Math.round(baseFt + eh.heightM * FT_PER_M)
+      const tipY = yOf(tipFt)
       return {
-        key: `lmk-${i}`, kind: l.kind, cx, cy: groundY, tipY, full: false, estimated: eh.estimated,
+        key: `lmk-${i}`, kind: l.kind, cx, cy: groundY, tipY, tipFt, lateralNm: l.lateralNm ?? 0, full: false, estimated: eh.estimated,
         shape: obstacleSymbol(LANDMARK_SHAPE_KIND[l.kind] ?? 'tower', cx, tipY, groundY, eh.estimated),
       }
     })
-    const lmkFull = declutterMarks(lmk.map((m) => ({ id: m.key, x: m.cx, priority: 0 })), 18)
-    lmk.forEach((m) => { m.full = lmkFull.has(m.key) })
     // Aerodromes / reporting points / navaids: symbols always drawn, labels
     // thinned by priority (aerodromes first, towered before others).
     const pois = collectRoutePois(waypoints, poiSets).map((p, i) => {
@@ -1649,6 +1651,16 @@ export const VerticalProfile = React.memo(function VerticalProfile({
         priority: p.kind === 'aerodrome' ? (p.towered ? 4 : 3) : p.kind === 'navaid' ? 2 : 1, labelPos: undefined as PlacedLabel | undefined,
       }
     })
+    // Obstacles and landmarks are thinned together by their real width, leaving room for the aerodrome / navaid /
+    // reporting-point symbols. For safety, high and near the route line wins (tip altitude, less per NM off the line), whichever dataset
+    // (a demoted landmark is a dot on the ground, so a tall one must not lose to a short obstacle); the obstacle setting
+    // the MSA always keeps its picture. See profileSymbolPriority.
+    const full = declutterSymbols([
+      ...obs.map((m) => ({ id: m.key, x: m.cx, halfW: symbolHalfWidth(m.shape, m.cx), priority: profileSymbolPriority(m.tipFt, m.lateralNm, true, m.estimated), always: m.limiting })),
+      ...lmk.map((m) => ({ id: m.key, x: m.cx, halfW: symbolHalfWidth(m.shape, m.cx), priority: profileSymbolPriority(m.tipFt, m.lateralNm, false, m.estimated) })),
+    ], pois.map((m) => ({ x: m.cx, halfW: POI_HALF_W_PX })))
+    obs.forEach((m) => { m.full = full.has(m.key) })
+    lmk.forEach((m) => { m.full = full.has(m.key) })
     // Names (the obstacle that sets the MSA, aerodromes, navaids, reporting
     // points) are placed by rectangle: each tries above / below / beside its
     // symbol and takes the first spot clear of every symbol and other label.
@@ -1658,7 +1670,7 @@ export const VerticalProfile = React.memo(function VerticalProfile({
       : m.shape ? sym(m.cx, m.cy, m.symY, 11) : sym(m.cx, m.cy - 16, Math.max(m.cy, m.groundY), 8)
     const avoid: BoxRect[] = [
       ...obs.map(obsBox),
-      ...lmk.map((m) => !m.full ? sym(m.cx, m.cy - 2, m.cy + 2, 2)
+      ...lmk.map((m) => !m.full ? sym(m.cx, m.tipY - 2, m.tipY + 2, 2)
         : m.shape ? sym(m.cx, m.tipY, m.cy, 11) : sym(m.cx, m.cy - 14, m.cy, 7)),
       ...pois.map((m) => sym(m.cx, m.cy - 6, m.cy + 6, 6)),
     ]

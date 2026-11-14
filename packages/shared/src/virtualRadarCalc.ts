@@ -127,6 +127,9 @@ export type ObstacleMarker = {
  */
 export type LandmarkMarker = {
   distNm: number
+  /** Distance off the route line (NM): near ones win a crowded spot on the chart (profileSymbolPriority). Optional for
+   *  markers built elsewhere (flight-log profiles); missing = treated as on the line. */
+  lateralNm?: number
   /** OSM height in metres, 0 when unknown (an estimate is used then). */
   heightM: number
   kind:   string   // 'church' | 'mast' | 'windmill' | 'water_tower' | 'chimney' | …
@@ -627,6 +630,7 @@ export function buildVirtualRadarProfile(
 
     landmarkMarkers.push({
       distNm: Math.round(distNm * 10) / 10,
+      lateralNm: Math.round(lateralKm * 0.539957 * 10) / 10,
       heightM: Number(p?.height_m ?? 0) || 0,
       kind:   String(p?.kind ?? ''),
       name:   String(p?.name ?? ''),

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  profileChartLayout, profileYMax, declutterMarks, obstacleOpacity, obstacleShownOnChart, obstacleDisplayNm, isLimitingObstacle, altitudeTicks, formatAltitudeTick, formatAltitudeFt, distanceTicks,
+  profileChartLayout, profileYMax, declutterSymbols, profileSymbolPriority, obstacleOpacity, obstacleShownOnChart, obstacleDisplayNm, isLimitingObstacle, altitudeTicks, formatAltitudeTick, formatAltitudeFt, distanceTicks,
   polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, clampProfileZoom, scrollAfterZoom, MAX_PROFILE_PX_PER_NM, profileYMin, altitudeTicksFrom,
 } from './profileChart'
 
@@ -123,18 +123,53 @@ describe('nearestSampleIndex', () => {
   })
 })
 
-describe('declutterMarks', () => {
-  it('keeps the highest priority in a crowd and spaces the rest', () => {
-    const kept = declutterMarks([
-      { id: 'a', x: 100, priority: 1 },
-      { id: 'b', x: 104, priority: 5 },   // wins over a
-      { id: 'c', x: 140, priority: 1 },
-      { id: 'd', x: 143, priority: 1 },   // too close to c, loses (left to right)
-    ], 10)
-    expect([...kept].sort()).toEqual(['b', 'c'])
+describe('declutterSymbols', () => {
+  it('keeps the highest priority in a crowd, by real width', () => {
+    const kept = declutterSymbols([
+      { id: 'a', x: 100, halfW: 4, priority: 1 },
+      { id: 'b', x: 104, halfW: 4, priority: 5 },   // wins over a
+      { id: 'c', x: 140, halfW: 4, priority: 1 },
+      { id: 'd', x: 147, halfW: 4, priority: 1 },   // extents (+2 px gap) touch c: loses (left to right)
+      { id: 'e', x: 170, halfW: 8, priority: 1 },   // a wide symbol needs more room
+      { id: 'f', x: 186, halfW: 8, priority: 0 },
+    ])
+    expect([...kept].sort()).toEqual(['b', 'c', 'e'])
+  })
+  it('thins obstacles and landmarks together: the higher tip keeps its picture, whichever dataset', () => {
+    // priority = tip altitude (ft); obstacles get +0.5 so they win a tie
+    expect([...declutterSymbols([
+      { id: 'landmark-150m', x: 50, halfW: 7, priority: 640 },
+      { id: 'obstacle-20m', x: 54, halfW: 8, priority: 180.5 },
+    ])]).toEqual(['landmark-150m'])
+    expect([...declutterSymbols([
+      { id: 'landmark', x: 50, halfW: 7, priority: 300 },
+      { id: 'obstacle', x: 54, halfW: 8, priority: 300.5 },
+    ])]).toEqual(['obstacle'])
+  })
+  it('ranks by tip altitude, less 300 ft per NM off the line, measured before estimated on a near tie', () => {
+    // a much taller mast slightly farther out beats a low chimney near the line (no hard step at 1 NM)
+    expect(profileSymbolPriority(1200, 1.1, true)).toBeGreaterThan(profileSymbolPriority(200, 0.9, true))
+    // similar heights: the nearer one wins
+    expect(profileSymbolPriority(500, 0.2, false)).toBeGreaterThan(profileSymbolPriority(520, 1.5, true))
+    // near tie: a measured height beats an estimate; a clearly taller estimate still wins
+    expect(profileSymbolPriority(400, 0.5, true, false)).toBeGreaterThan(profileSymbolPriority(420, 0.5, false, true))
+    expect(profileSymbolPriority(600, 0.5, false, true)).toBeGreaterThan(profileSymbolPriority(400, 0.5, true, false))
+    // exact tie: obstacle
+    expect(profileSymbolPriority(400, 0.5, true)).toBeGreaterThan(profileSymbolPriority(400, 0.5, false))
+    expect([...declutterSymbols([
+      { id: 'far-low', x: 50, halfW: 8, priority: profileSymbolPriority(300, 1.8, true) },
+      { id: 'near', x: 54, halfW: 7, priority: profileSymbolPriority(300, 0.3, false) },
+    ])]).toEqual(['near'])
+  })
+  it('keeps clear of reserved symbols, except an `always` one (the obstacle setting the MSA)', () => {
+    const kept = declutterSymbols([
+      { id: 'mast', x: 20, halfW: 8, priority: 300 },
+      { id: 'limiting', x: 22, halfW: 8, priority: 1e9, always: true },
+    ], [{ x: 20, halfW: 6 }])
+    expect([...kept]).toEqual(['limiting'])
   })
   it('keeps everything that is far enough apart', () => {
-    expect(declutterMarks([{ id: 'a', x: 0, priority: 0 }, { id: 'b', x: 50, priority: 0 }], 20).size).toBe(2)
+    expect(declutterSymbols([{ id: 'a', x: 0, halfW: 8, priority: 0 }, { id: 'b', x: 50, halfW: 8, priority: 0 }]).size).toBe(2)
   })
 })
 

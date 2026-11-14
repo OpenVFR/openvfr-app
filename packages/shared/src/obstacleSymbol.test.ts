@@ -95,3 +95,14 @@ describe('batchSymbolPaths', () => {
     expect(batchSymbolPaths([{ cx: 0, scaleX: 1, shape: null }, { cx: 1, scaleX: 1 }])).toEqual([])
   })
 })
+
+describe('symbolHalfWidth', () => {
+  it('measures the widest primitive around the centre; taller symbols are wider', async () => {
+    const { obstacleSymbol, symbolHalfWidth } = await import('./obstacleSymbol')
+    const short = symbolHalfWidth(obstacleSymbol('mast', 100, 0, 12), 100)
+    const tall = symbolHalfWidth(obstacleSymbol('mast', 100, 0, 60), 100)
+    expect(short).toBeGreaterThan(0)
+    expect(tall).toBeGreaterThan(short)
+    expect(symbolHalfWidth(null, 0)).toBe(8)
+  })
+})

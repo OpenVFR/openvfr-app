@@ -24,7 +24,7 @@ import { CLOUD_COLORS } from '@open-vfr/shared/featureColors'
 import type { ParsedCloudLayer } from '@open-vfr/shared/fetchWx'
 import {
   profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, profileYMin, liveAltitudeWindow, altitudeTicksFrom, formatAltitudeTick, formatAltitudeFt, distanceTicks,
-  polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, declutterMarks, obstacleOpacity, obstacleShownOnChart, isLimitingObstacle, type ProfileChartLayout,
+  polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, declutterSymbols, profileSymbolPriority, obstacleOpacity, obstacleShownOnChart, isLimitingObstacle, type ProfileChartLayout,
 } from '@open-vfr/shared/profileChart'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { useMsaMargins } from '../db/useSettings'
@@ -33,7 +33,7 @@ import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
 import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
 import { carryLookaheadTerrain } from '@open-vfr/shared/lookaheadTerrain'
 import { plannedLineEnds } from '@open-vfr/shared/pathAhead'
-import { obstacleSymbol, polyPath, primStyle, obstacleXScale, MIN_FULL_HEIGHT_PX, type SymbolPrim } from '@open-vfr/shared/obstacleSymbol'
+import { obstacleSymbol, polyPath, primStyle, obstacleXScale, symbolHalfWidth, MIN_FULL_HEIGHT_PX, type SymbolPrim } from '@open-vfr/shared/obstacleSymbol'
 import { effectiveHeight, obstacleTipsForMsa, limitingObstacleLabel, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
 import { legSpans, legMsaList, legBelowMsa, dragShownFt, withLegLevel, altAtY, unreachedLegs, verticalPhaseMarks, LEVEL_STEP_FT, DRAG_MIN_MOVE_PX, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { useMefGrids } from '../hooks/useMefGrids'
@@ -780,8 +780,8 @@ const FlownScrubOverlay = memo(function FlownScrubOverlay({ layout: L, series, f
 // ---------------------------------------------------------------------------
 
 /** Pictograms closer than this (px) collapse to dots, highest obstacle first. */
-const OBSTACLE_MIN_GAP_PX = 14
-const LANDMARK_MIN_GAP_PX = 18
+/** Half width of an aerodrome / navaid / reporting-point symbol on the chart (obstacles keep clear of it). */
+const POI_HALF_W_PX = 6
 
 type ObstacleMark = { key: string; kind: string; cx: number; cy: number; groundY: number; opacity: number; limiting: boolean; priority: number; full: boolean; estimated: boolean; label: string; labelPos?: PlacedLabel; leader?: boolean }
 type PoiMark = { key: string; kind: string; subtype: string; towered: boolean; label: string; cx: number; cy: number; priority: number; labelPos?: PlacedLabel }
@@ -1619,28 +1619,25 @@ function VirtualRadar({
       // Only what is near the route, or what sets the MSA (see OBSTACLE_DISPLAY_NM).
       if (!obstacleShownOnChart(o.lateralNm, limiting, margins.abeamNm)) return []
       return [{
-        key: `obs-${i}`, kind: o.kind, cx: clampX(L.xOf(o.distNm), 8), cy: L.yOf(tipFt), groundY: L.yOf(Math.max(0, baseFt)),
+        key: `obs-${i}`, kind: o.kind, cx: clampX(L.xOf(o.distNm), 8), cy: L.yOf(tipFt), groundY: L.yOf(Math.max(0, baseFt)), tipFt, lateralNm: o.lateralNm,
         opacity: obstacleOpacity(o.lateralNm, margins.abeamNm) * (eh.estimated ? 0.85 : 1), limiting,
         priority: limiting ? 1e9 + tipFt : tipFt, full: false, estimated: eh.estimated,
         label: limiting && showObstLabels ? limitingObstacleLabel(o.kind, o.name, tipFt, eh.estimated) : '', labelPos: undefined as PlacedLabel | undefined, leader: false,
       }]
     })
     mergeNearbyLabels(obs, LIMITING_LABEL_MERGE_PX)
-    const obsFull = declutterMarks(obs.map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), OBSTACLE_MIN_GAP_PX)
-    obs.forEach((m) => { m.full = obsFull.has(m.key) })
     const lmk = profile.landmarks.map((l, i) => {
       // Floored at 0: landmarks have no elevation of their own and
       // terrainAt() can go slightly negative from DEM noise near water.
       const baseFt = Math.max(0, terrainAt(terrainPts, l.distNm))
       const eh = effectiveHeight(l.kind, l.heightM)
+      const tipFt = Math.round(baseFt + eh.heightM * FT_PER_M)
       return {
         key: `lmk-${i}`, kind: l.kind, cx: clampX(L.xOf(l.distNm), 7), cy: L.yOf(baseFt),
         // Where the structure ends (its tip), for the full-height shape.
-        tipY: L.yOf(Math.round(baseFt + eh.heightM * FT_PER_M)), groundY: L.yOf(baseFt), full: false, estimated: eh.estimated,
+        tipY: L.yOf(tipFt), tipFt, lateralNm: l.lateralNm ?? 0, groundY: L.yOf(baseFt), full: false, estimated: eh.estimated,
       }
     })
-    const lmkFull = declutterMarks(lmk.map((m) => ({ id: m.key, x: m.cx, priority: 0 })), LANDMARK_MIN_GAP_PX)
-    lmk.forEach((m) => { m.full = lmkFull.has(m.key) })
     // Aerodromes / reporting points / navaids: symbols always drawn, labels
     // thinned by priority (aerodromes first, towered before others).
     const pois = collectRoutePois(waypoints, poiSets).map((p, i) => {
@@ -1653,6 +1650,18 @@ function VirtualRadar({
         priority: p.kind === 'aerodrome' ? (p.towered ? 4 : 3) : p.kind === 'navaid' ? 2 : 1, labelPos: undefined as PlacedLabel | undefined,
       }
     })
+    // Obstacles and landmarks are thinned together by their real width (the shape they would be drawn with),
+    // leaving room for the aerodrome / navaid / reporting-point symbols. For safety, high and near the route line wins
+    // (tip altitude, less per NM off the line), whichever dataset (a demoted landmark is a dot on the ground, so a tall one must not lose
+    // to a short obstacle); the obstacle setting the MSA always keeps its picture. See profileSymbolPriority; same as native.
+    const full = declutterSymbols([
+      ...obs.map((m) => ({ id: m.key, x: m.cx, priority: profileSymbolPriority(m.tipFt, m.lateralNm, true, m.estimated), always: m.limiting,
+        halfW: symbolHalfWidth(obstacleSymbol(m.kind, m.cx, m.cy, symbolGroundY(m.cy, m.groundY, L.plotBottom), m.estimated), m.cx) })),
+      ...lmk.map((m) => ({ id: m.key, x: m.cx, priority: profileSymbolPriority(m.tipFt, m.lateralNm, false, m.estimated),
+        halfW: symbolHalfWidth(obstacleSymbol(LANDMARK_SHAPE_KIND[m.kind] ?? 'tower', m.cx, m.tipY, m.groundY, m.estimated), m.cx) })),
+    ], pois.map((m) => ({ x: m.cx, halfW: POI_HALF_W_PX })))
+    obs.forEach((m) => { m.full = full.has(m.key) })
+    lmk.forEach((m) => { m.full = full.has(m.key) })
     // Names (the obstacle that sets the MSA, aerodromes, navaids, reporting
     // points) are placed by rectangle: each tries above / below / beside its
     // symbol and takes the first spot clear of every symbol and other label.
@@ -1675,7 +1684,7 @@ function VirtualRadar({
     ]
     const avoid: BoxRect[] = [
       ...obs.map(obsBox),
-      ...lmk.map((m) => !m.full ? sym(m.cx, m.cy - 2, m.cy + 2, 2)
+      ...lmk.map((m) => !m.full ? sym(m.cx, m.tipY - 2, m.tipY + 2, 2)
         : m.groundY - m.tipY >= MIN_FULL_HEIGHT_PX ? sym(m.cx, m.tipY, m.groundY, 11) : sym(m.cx, m.cy - 14, m.cy, 7)),
       ...pois.map((m) => sym(m.cx, m.cy - 6, m.cy + 6, 6)),
     ]
@@ -1864,12 +1873,12 @@ function VirtualRadar({
 
         {/* ── Landmarks on the ground, real map pictograms ──────── */}
         {landmarkMarks.map((m) => {
+          // Crowded (declutterSymbols): a dot at the tip, like the obstacles, so its height stays on the chart.
+          if (!m.full) return <circle key={m.key} cx={m.cx} cy={m.tipY} r={1.5} fill="rgba(150,150,150,0.9)" />
           const shape = obstacleSymbol(LANDMARK_SHAPE_KIND[m.kind] ?? 'tower', m.cx, m.tipY, m.groundY, m.estimated)
           if (shape) return <g key={m.key} opacity={m.estimated ? 0.85 : 1}>{renderShape(shape)}</g>
-          return m.full
-          ? renderIconAt(m.key, m.cx, m.cy, 14, iconMarkup[`lmk:${m.kind}`],
+          return renderIconAt(m.key, m.cx, m.cy, 14, iconMarkup[`lmk:${m.kind}`],
             <circle cx={m.cx} cy={m.cy} r={2.5} fill="rgba(150,150,150,0.9)" stroke="rgba(0,0,0,0.4)" strokeWidth={1} />)
-          : <circle key={m.key} cx={m.cx} cy={m.cy} r={1.6} fill="rgba(150,150,150,0.8)" />
         })}
 
         {/* ── Aerodromes, reporting points, navaids (own distance per kind) ── */}

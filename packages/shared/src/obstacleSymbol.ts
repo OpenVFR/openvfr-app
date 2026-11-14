@@ -233,3 +233,15 @@ export function batchSymbolPaths(
   }
   return out
 }
+
+/** Half the drawn width of a symbol around `cx` (its widest primitive), for decluttering by real size: a tall symbol is
+ *  wider than a short one. A missing shape counts as the default pictogram's 8 px. */
+export function symbolHalfWidth(prims: readonly SymbolPrim[] | null, cx: number): number {
+  if (!prims || prims.length === 0) return 8
+  let half = 0
+  for (const p of prims) {
+    const xs = p.t === 'rect' ? [p.x, p.x + p.w] : p.t === 'line' ? [p.x1, p.x2] : p.t === 'poly' ? p.pts.map(q => q[0]) : [p.cx - p.r, p.cx + p.r]
+    for (const x of xs) half = Math.max(half, Math.abs(x - cx))
+  }
+  return half
+}

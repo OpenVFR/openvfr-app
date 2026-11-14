@@ -249,23 +249,26 @@ export function nearestSampleIndex(distNms: readonly number[], distNm: number): 
 // ── Obstacle / landmark symbols ────────────────────────────────────────────
 
 /**
- * Greedy pixel declutter: returns the ids to draw as full symbols; the rest
- * are drawn as small dots (so nothing disappears, but a dense field of masts
- * does not become a thicket of overlapping pictograms). Higher priority wins
- * a slot first, ties go left to right. A mark is kept when no kept mark lies
- * within `minGapPx` horizontally.
+ * Greedy declutter of the profile's ground symbols (obstacles and landmarks together, by their real drawn width):
+ * returns the ids drawn as full symbols; the rest are drawn as small dots, so nothing disappears but a dense field (a
+ * city, a wind farm) does not become a thicket of overlapping pictures. `always` symbols (the obstacle that sets the
+ * MSA) are kept whatever they overlap; then higher priority wins a slot first, ties go left to right. A symbol is kept
+ * when its extent plus `gapPx` touches no kept symbol and no `reserved` extent (the aerodrome / navaid / reporting
+ * point symbols, which are always drawn).
  */
-export function declutterMarks(
-  marks: readonly { id: string; x: number; priority: number }[],
-  minGapPx: number,
+export function declutterSymbols(
+  symbols: readonly { id: string; x: number; halfW: number; priority: number; always?: boolean }[],
+  reserved: readonly { x: number; halfW: number }[] = [],
+  gapPx = 2,
 ): Set<string> {
-  const order = [...marks].sort((a, b) => b.priority - a.priority || a.x - b.x)
-  const kept: number[] = []
+  const kept: [number, number][] = reserved.map(r => [r.x - r.halfW, r.x + r.halfW])
+  const order = [...symbols].sort((a, b) => Number(!!b.always) - Number(!!a.always) || b.priority - a.priority || a.x - b.x)
   const out = new Set<string>()
-  for (const m of order) {
-    if (kept.some((x) => Math.abs(x - m.x) < minGapPx)) continue
-    kept.push(m.x)
-    out.add(m.id)
+  for (const s of order) {
+    const left = s.x - s.halfW - gapPx, right = s.x + s.halfW + gapPx
+    if (!s.always && kept.some(([l, r]) => left < r && right > l)) continue
+    kept.push([s.x - s.halfW, s.x + s.halfW])
+    out.add(s.id)
   }
   return out
 }
@@ -284,6 +287,23 @@ export const OBSTACLE_DISPLAY_NM = 2
 export function obstacleDisplayNm(abeamNm: number): number {
   return Math.min(abeamNm, OBSTACLE_DISPLAY_NM)
 }
+/** How much a symbol's rank drops per NM off the route line, in ft of tip altitude (profileSymbolPriority). */
+export const SYMBOL_RANK_FT_PER_NM = 300
+/** Rank handicap of a symbol whose height is an estimate, in ft: a measured height wins a near tie. */
+export const SYMBOL_RANK_ESTIMATE_FT = 50
+
+/**
+ * Rank of an obstacle or landmark symbol when a crowd is thinned (declutterSymbols), for safety: what the aircraft can
+ * hit is high and near the route line. Tip altitude, minus SYMBOL_RANK_FT_PER_NM for each NM off the line (smooth: a
+ * much taller obstacle slightly farther out still wins, of two similar heights the nearer one), minus
+ * SYMBOL_RANK_ESTIMATE_FT when the height is an estimate (a measured height wins a near tie, a clearly taller estimate
+ * still wins). Obstacles and landmarks rank alike; at an exact tie the obstacle wins. The obstacle setting the MSA is
+ * kept anyway (`always`), however far out.
+ */
+export function profileSymbolPriority(tipFt: number, lateralNm: number, isObstacle: boolean, estimated = false): number {
+  return tipFt - SYMBOL_RANK_FT_PER_NM * Math.max(0, lateralNm) - (estimated ? SYMBOL_RANK_ESTIMATE_FT : 0) + (isObstacle ? 0.5 : 0)
+}
+
 /** Whether to draw an obstacle: it is near the route, or it is what sets the MSA. */
 export function obstacleShownOnChart(lateralNm: number, limiting: boolean, abeamNm: number): boolean {
   return limiting || lateralNm <= obstacleDisplayNm(abeamNm)
