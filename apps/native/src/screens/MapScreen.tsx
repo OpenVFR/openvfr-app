@@ -77,7 +77,7 @@ const LANDMARK_LABELS: Record<string, string> = {
 function aerodromePropsFromFeature(p: Record<string, unknown>, coords: [number, number] | null): AerodromeFeatureProps {
   const parse = <T,>(v: unknown): T => typeof v === 'string' ? JSON.parse(v) : v as T
   return {
-    icao:         p.icao as string,
+    icao:         aerodromeId(p),
     name:         p.name as string ?? '',
     type:         p.type as string | undefined,
     elevation_ft: p.elevation_ft as number | undefined,
@@ -175,6 +175,7 @@ import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../sty
 import { isLowMemoryDevice } from '../utils/deviceMemory'
 import { NativeSheet } from '../components/NativeSheet'
 import { BaroPromptModal } from '../components/BaroPromptModal'
+import { aerodromeId } from '@open-vfr/shared/aerodromeId'
 import { CIRCUIT_FOCUS_COLOR } from '@open-vfr/shared/featureColors'
 /** How often the flown trail is rebuilt from the active log (ms). */
 const TRAIL_REFRESH_MS = 5_000
@@ -192,7 +193,9 @@ function isAerodrome(p: Record<string, unknown>) {
   // features have neither `icao` nor `runways` at all -- confirmed against
   // the actual tile schemas), so it's a safe discriminator regardless of
   // ICAO length.
-  return typeof p.icao === 'string' && Array.isArray(p.runways)
+  // An aerodrome with no ICAO code at all (a private strip from another source: ESMARS) is told by its `local_id`; without this its
+  // tap fell through to the obstacle branch below (it has an elevation), showing an obstacle popup.
+  return aerodromeId(p) !== '' && Array.isArray(p.runways)
 }
 
 function isAirspace(p: Record<string, unknown>) {

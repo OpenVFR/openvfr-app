@@ -478,7 +478,7 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
               <Pressable
                 onPress={() => {
                   openExternal(buildReportProblemMailto({
-                    icao: feature?.icao ?? '', name: feature?.name, appVersion: Application.nativeApplicationVersion,
+                    icao: feature?.icao, localId: (feature as { local_id?: string | null } | undefined)?.local_id, name: feature?.name, appVersion: Application.nativeApplicationVersion,
                     platform: Platform.OS, dataGeneratedAt: getCachedTileManifest()?.generated_at,
                   }), 'the mail app', `Write to ${REPORT_PROBLEM_EMAIL} instead.`)
                 }}

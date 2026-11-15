@@ -45,6 +45,7 @@ import {
   type RunwayWindHighlightEnd,
 } from '@open-vfr/shared/runwayWind'
 import { AIRSPACE_COLORS as AC, CONTROLLED_CLASSES, ZONE_TYPES, controlledStyle } from '@open-vfr/shared/airspaceColors'
+import { aerodromeId } from '@open-vfr/shared/aerodromeId'
 import { formatObstacleName, formatLandmarkName, obstacleWaypointName, isObstacleFeature, snapIconName, CURRENT_POSITION_LABEL } from '@open-vfr/shared/snapLabels'
 import { chooseSnapTarget, sortSnapCandidates, snapHintText, neighbourAtDrop } from '@open-vfr/shared/snapChoice'
 
@@ -421,7 +422,7 @@ const SNAP_LAYERS = [
  *  extractSnapDisplayName below for the picker-only verbose form. */
 function extractSnapName(feat: Feature): string {
   const p = (feat.properties ?? {}) as Record<string, unknown>
-  if (typeof p.icao === 'string' && p.icao) return String(p.icao)
+  if (aerodromeId(p)) return aerodromeId(p)
   // Obstacles/landmarks: most have no `name` at all (OpenAIP leaves it as an
   // empty string, not null/undefined, so a plain `p.name ?? ...` fallback
   // never triggers) — fall back to a readable kind label instead of showing
@@ -471,7 +472,7 @@ function extractSnapDisplayName(feat: Feature): string {
 /** Short kind badge for the disambiguation picker. */
 function extractSnapKind(feat: Feature): string {
   const p = (feat.properties ?? {}) as Record<string, unknown>
-  if (typeof p.icao === 'string' && p.icao) return 'AD'
+  if (aerodromeId(p)) return 'AD'
   if (p.kind === 'VOR' || p.kind === 'NDB') return String(p.kind)
   if (p.wp_type === 'MRP' || p.wp_type === 'RP') return String(p.wp_type)
   if (p.folder !== undefined) return 'UWP'
@@ -1648,7 +1649,7 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
               minzoom={8}
               layout={{
                 visibility: showAerodromes ? 'visible' : 'none',
-                'text-field': ['get', 'icao'],
+                'text-field': ['coalesce', ['get', 'icao'], ['get', 'local_id']],
                 'text-size': 11,
                 // Anchor the label's top edge below the icon. Icon image is 56 px (pixelRatio 1) = 56 px * icon-size tall
                 // (centred on the point), so offset = (~24 * icon-size) / 11 px text.

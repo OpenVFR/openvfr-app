@@ -14,6 +14,7 @@
     "./airspaceGeometryCache": "./src/airspaceGeometryCache.ts",
     "./airspaceInForce": "./src/airspaceInForce.ts",
     "./airspaceQuery": "./src/airspaceQuery.ts",
+    "./aerodromeId":     "./src/aerodromeId.ts",
     "./airspaceColors":  "./src/airspaceColors.ts",
     "./aerodromeSymbol": "./src/aerodromeSymbol.ts",
     "./airspaceAltitude": "./src/airspaceAltitude.ts",

@@ -1744,7 +1744,7 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
         source: 'ofm-aerodromes',
         minzoom: 8,
         layout: {
-          'text-field': ['get', 'icao'],
+          'text-field': ['coalesce', ['get', 'icao'], ['get', 'local_id']],
           'text-font': ['Noto Sans Medium'],
           'text-size': [
             'interpolate', ['linear'], ['zoom'],
