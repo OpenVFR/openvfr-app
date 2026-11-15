@@ -2410,6 +2410,17 @@ export const AviationMap = React.memo(function AviationMap({
   const [landuseMounted,   setLanduseMounted]   = useState(false)
   const [hillshadeMounted, setHillshadeMounted] = useState(false)
   const [contoursMounted,  setContoursMounted]  = useState(false)
+  // A basemap switch (vector <-> satellite) replaces the whole style, and the map is remounted for it (`key` below): a style swapped
+  // in on a live map left some devices with no basemap at all, even after switching back. The new map starts like a first mount:
+  // style not loaded, staged layers (landuse, hillshade, contours) not mounted until it has loaded. Reset in the same render as the
+  // change (not in an effect), so no render mounts those layers against a style that is still loading.
+  const [seenBasemap, setSeenBasemap] = useState(basemapMode)
+  if (seenBasemap !== basemapMode) {
+    setSeenBasemap(basemapMode)
+    setStyleLoaded(false)
+    setReadyStage(0)
+    setLanduseMounted(false); setHillshadeMounted(false); setContoursMounted(false)
+  }
   // These archives are always remote: never mount one before its URL is versioned (the map can be up earlier on a
   // downloaded basemap), since a mounted source keeps its URL.
   useEffect(() => { if (showLanduse && readyStage >= 1 && manifestReady) setLanduseMounted(true) }, [showLanduse, readyStage, manifestReady])
@@ -3504,7 +3515,7 @@ export const AviationMap = React.memo(function AviationMap({
     >
       {mapMountable && (
       <Map
-        key={mapRetryKey}
+        key={`${mapRetryKey}-${basemapMode}`}
         ref={mapRef}
         style={StyleSheet.absoluteFill}
         onRegionDidChange={handleRegionChange}
