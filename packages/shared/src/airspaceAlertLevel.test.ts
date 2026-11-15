@@ -15,7 +15,7 @@ describe('airspaceCategory', () => {
     expect(airspaceCategory('GLDR', '')).toBe('glider')
     expect(airspaceCategory('GLDR', 'GLDR')).toBe('glider')
     expect(airspaceCategory('MODEL', 'MODEL')).toBe('model')
-    expect(airspaceCategory('GLDR', 'GLIDING')).toBe('gliding')       // a federation's soaring sector: class GLDR, type SOAR
+    expect(airspaceCategory('GLDR', 'GLIDING')).toBe('gliding')       // a federation's soaring sector: class GLDR, type GLIDING
     expect(airspaceCategory('X', '')).toBe('activity')             // anything else of that kind
   })
 
