@@ -24,6 +24,9 @@ export const PIPELINE_JOBS = {
   // AIP supplement areas added to the airspace file; only Sweden has a source so far (LFV DAIM), keep in sync
   // with the pipeline's sup_airspace_ext.py FETCHERS.
   sup_airspace: { label: 'Temporary areas (AIP SUP)', when: 'ready', countries: ['se'] },
+  // Soaring sectors the country's gliding federation publishes, added to the airspace file as class GLDR; only Sweden has a source so far
+  // (Svenska Segelflygförbundet, OpenAir), keep in sync with the pipeline's gliding_sectors_ext.py FETCHERS.
+  gliding_sectors: { label: 'Gliding sectors', when: 'ready', countries: ['se'] },
   obstacles:    { label: 'Obstacles',                 when: 'ready' },
   landmarks:    { label: 'Landmarks',                 when: 'ready' },
   water:        { label: 'Water',                     when: 'ready' },
