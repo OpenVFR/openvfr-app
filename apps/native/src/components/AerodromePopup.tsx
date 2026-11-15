@@ -49,7 +49,7 @@ interface Frequency {
 const SERVICE_LABEL: Record<string, string> = {
   TWR: 'TWR', APP: 'APP', ATIS: 'ATIS', ATIS_ARR: 'ATIS ARR',
   ATIS_DEP: 'ATIS DEP', SMC: 'GROUND', AFIS: 'AFIS', FIS: 'FIS',
-  ACS: 'ACC', RDO: 'RADIO', INFO: 'INFO', MET: 'MET',
+  ACS: 'ACC', RDO: 'RADIO', RADIO: 'RADIO', CONTROL: 'CONTROL', INFO: 'INFO', MET: 'MET',
 }
 
 interface Threshold {

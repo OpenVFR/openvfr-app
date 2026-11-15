@@ -9,7 +9,7 @@ const SURFACE_LABEL: Record<string, string> = {
   SAND: 'Sand',
 }
 
-const PRIMARY_ORDER = ['TWR', 'AFIS', 'INFO', 'APP', 'RDO', 'COM']
+const PRIMARY_ORDER = ['TWR', 'AFIS', 'INFO', 'APP', 'RDO', 'RADIO', 'COM']
 
 function primaryFreq(props: AerodromeFeatureProps): string | null {
   for (const svc of PRIMARY_ORDER) {

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import type { FeatureCollection } from 'geojson'
 import {
   configureCountryData, setActiveCountries, getActiveCountries, loadCountryGeojson,
-  countryDatasetFile, countryArchiveFile, mergeFeatureCollections, countryDatasetSource,
+  countryDatasetFile, countryArchiveFile, countryCuratedFiles, mergeFeatureCollections, countryDatasetSource,
   onActiveCountriesChange, invalidateCountryData, countryFileUrlReady,
 } from './countryData'
 
@@ -162,5 +162,15 @@ describe('invalidateCountryData', () => {
     await loadCountryGeojson('aerodromes', ['dk'])               // unchanged: still cached
     await loadCountryGeojson('aerodromes', ['se'])               // changed: fetched again
     expect(fetched).toEqual(['https://tiles/se-aerodromes.geojson?v=a1', 'https://tiles/dk-aerodromes.geojson?v=b1', 'https://tiles/se-aerodromes.geojson?v=a2'])
+  })
+})
+
+describe('countryCuratedFiles', () => {
+  it('names the five files the curation publish uploads, per country', () => {
+    expect(countryCuratedFiles('se')).toEqual([
+      'se-aerodrome-details.geojson', 'se-aerodrome-details.preview.geojson', 'se-aerodromes.preview.geojson',
+      'se-charts.public.json', 'se-charts.preview.json',
+    ])
+    expect(countryCuratedFiles('no')[0]).toBe('no-aerodrome-details.geojson')
   })
 })

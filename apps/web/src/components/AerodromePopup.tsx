@@ -203,6 +203,8 @@ const SERVICE_LABEL: Record<string, string> = {
   FIS: 'FIS',
   ACS: 'ACC',
   RDO: 'RADIO',
+  RADIO: 'RADIO',
+  CONTROL: 'CONTROL',
   INFO: 'INFO',
   MET: 'MET',
   COM: 'COM',

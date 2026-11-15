@@ -67,6 +67,19 @@ export function countryMefFile(country: string): string {
   return `${country}-mef.mef`
 }
 
+/**
+ * The files the curation publish uploads by hand (openvfr-infra push-curated.sh): preview aerodromes, public and preview
+ * details, public and preview charts. (The public aerodromes file is the normal `aerodromes` dataset.) They have no
+ * data_loads row or refresh job, so the admin's file table must list them as expected.
+ */
+export function countryCuratedFiles(country: string): string[] {
+  return [
+    `${country}-aerodrome-details.geojson`, `${country}-aerodrome-details.preview.geojson`,
+    `${country}-aerodromes.preview.geojson`,
+    `${country}-charts.public.json`, `${country}-charts.preview.json`,
+  ]
+}
+
 export interface CountryDataConfig {
   /** File name -> URL to fetch (e.g. manifest-versioned tile URL, or a local file URI). */
   resolveUrl: (fileName: string) => string
