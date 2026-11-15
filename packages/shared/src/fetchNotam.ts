@@ -96,15 +96,15 @@ export class NotamNoIcaoError extends Error {
 }
 
 export async function fetchNotams(
-  icao: string,
+  icao: string | null | undefined,      // an aerodrome without an ICAO code (data from other sources) has none
   baseUrl = '',
   signal?: AbortSignal,
   headers?: Record<string, string>,
 ): Promise<NotamResult> {
   // The API only serves real 4-letter ICAO codes (400 otherwise; it trims and upper-cases first, so do the
   // same). Some dataset aerodromes carry a longer pseudo-ICAO (e.g. ESTAGA): no request, a distinct error.
-  const code = icao.trim().toUpperCase()
-  if (!/^[A-Z]{4}$/.test(code)) throw new NotamNoIcaoError(icao)
+  const code = (icao ?? '').trim().toUpperCase()
+  if (!/^[A-Z]{4}$/.test(code)) throw new NotamNoIcaoError(icao ?? '')
   const url = `${baseUrl}/api/notam?icao=${encodeURIComponent(code)}`
   // Retries transient network blips / 502-504 -- see fetchWithRetry.ts. A
   // 503 that persists past retries still falls through to the empty-result

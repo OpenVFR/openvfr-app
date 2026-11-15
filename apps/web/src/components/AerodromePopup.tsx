@@ -923,7 +923,7 @@ export default function AerodromePopup({
               <a
                 className={css.reportLink}
                 href={buildReportProblemMailto({
-                  icao: p.icao, name: p.name, appVersion: __APP_VERSION__, platform: 'web',
+                  icao: p.icao, localId: (p as { local_id?: string | null }).local_id, name: p.name, appVersion: __APP_VERSION__, platform: 'web',
                   dataGeneratedAt: getCachedTileManifest()?.generated_at,
                 })}
                 data-testid="report-problem"

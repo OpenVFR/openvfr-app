@@ -9,7 +9,9 @@
 export const REPORT_PROBLEM_EMAIL = 'report-issue@openvfr.org'
 
 export interface ReportProblemContext {
-  icao: string
+  /** Null for an aerodrome that has no ICAO code (data from a source other than OFM/openAIP carries only `local_id`). */
+  icao?: string | null
+  localId?: string | null
   name?: string | null
   /** App version name, e.g. "0.9.0". */
   appVersion?: string | null
@@ -22,7 +24,7 @@ export interface ReportProblemContext {
 /** `mailto:` URL with subject and a body template; every value is percent-encoded. */
 export function buildReportProblemMailto(ctx: ReportProblemContext): string {
   const name = ctx.name?.trim()
-  const icao = ctx.icao.trim().toUpperCase() || name || 'unknown aerodrome'      // an aerodrome without an ICAO code is told by its name
+  const icao = (ctx.icao ?? '').trim().toUpperCase() || (ctx.localId ?? '').trim().toUpperCase() || name || 'unknown aerodrome'    // no ICAO code: its local id, else its name
   const data = ctx.dataGeneratedAt?.slice(0, 10)
   const lines = [
     `Aerodrome: ${icao}${name && name !== icao ? ` (${name})` : ''}`,

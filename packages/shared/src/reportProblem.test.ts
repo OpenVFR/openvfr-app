@@ -38,4 +38,12 @@ describe('buildReportProblemMailto', () => {
     expect(m.subject).toBe('Airfield data: Marsvinsholm')
     expect(m.body).toContain('Aerodrome: Marsvinsholm\n')
   })
+
+  it('does not throw for an aerodrome whose icao is null: its local id, else its name', () => {
+    const noIcao = { icao: null, localId: 'ESMARS', name: 'Marsvinsholm' }
+    expect(parse(buildReportProblemMailto(noIcao)).subject).toBe('Airfield data: ESMARS')
+    expect(parse(buildReportProblemMailto(noIcao)).body).toContain('Aerodrome: ESMARS (Marsvinsholm)')
+    expect(parse(buildReportProblemMailto({ icao: null, name: 'Marsvinsholm' })).subject).toBe('Airfield data: Marsvinsholm')
+    expect(() => buildReportProblemMailto({})).not.toThrow()
+  })
 })

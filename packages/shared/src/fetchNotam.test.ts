@@ -11,6 +11,14 @@ describe('fetchNotams', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('an aerodrome without an ICAO code (null: only a local id) is a NotamNoIcaoError, not a TypeError', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchNotams(null)).rejects.toBeInstanceOf(NotamNoIcaoError)
+    await expect(fetchNotams(undefined)).rejects.toBeInstanceOf(NotamNoIcaoError)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('trims and upper-cases like the server before the check', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ notams: [] }) }))
     vi.stubGlobal('fetch', fetchMock)
