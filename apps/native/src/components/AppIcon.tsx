@@ -10,6 +10,7 @@
 import React from 'react'
 import { View, type StyleProp, type ViewStyle } from 'react-native'
 import IconAlertTriangle from '@tabler/icons-react-native/IconAlertTriangle'
+import IconMessageReport from '@tabler/icons-react-native/IconMessageReport'
 import IconArrowBackUp from '@tabler/icons-react-native/IconArrowBackUp'
 import IconArrowDown from '@tabler/icons-react-native/IconArrowDown'
 import IconArrowForwardUp from '@tabler/icons-react-native/IconArrowForwardUp'
@@ -120,6 +121,7 @@ const ICONS = {
   plane: IconPlane,
   planeFilled: IconPlaneFilled,
   redo: IconArrowForwardUp,
+  report: IconMessageReport,
   refresh: IconRefresh,
   route: IconRoute,
   save: IconDeviceFloppy,

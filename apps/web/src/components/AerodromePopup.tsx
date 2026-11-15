@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import css from './AerodromePopup.module.css'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
+import { buildReportProblemMailto } from '@open-vfr/shared/reportProblem'
+import { getCachedTileManifest } from '@open-vfr/shared/tileManifest'
 import { fetchWxResolved, decodeMetar, parseMetarWind, parseMetarClouds, type WxResolved, type WxStationCandidate, type ParsedWind } from '../utils/fetchWx'
 import { fetchAmbientWx, type AmbientWx } from '@open-vfr/shared/fetchWind'
 import { parseTaf, tafChangeSoon, type TafPeriod } from '@open-vfr/shared/parseTaf'
@@ -33,7 +35,7 @@ import LocalInfoSection from './LocalInfoSection'
 import { setCircuitFocus, useCircuitFocus } from '../utils/aerodromeDetails'
 import { loadStations as loadStationsShared, type StationRecord } from '@open-vfr/shared/wxStations'
 import { countryDatasetSource } from '@open-vfr/shared/countryData'
-import { IconChevronDown, IconChevronUp, IconHome, IconHomeFilled, IconX } from '@tabler/icons-react'
+import { IconChevronDown, IconChevronUp, IconHome, IconHomeFilled, IconMessageReport, IconX } from '@tabler/icons-react'
 
 /** A runway end ("06"). It is a button: tapping it shows only that end's
  *  circuits on the map (again to show all). */
@@ -916,6 +918,21 @@ export default function AerodromePopup({
                 })}
               </div>
             )}
+
+            {/* Wrong or missing data: opens the mail app with the airfield and versions filled in */}
+            <div className={css.section}>
+              <a
+                className={css.reportLink}
+                href={buildReportProblemMailto({
+                  icao: p.icao, name: p.name, appVersion: __APP_VERSION__, platform: 'web',
+                  dataGeneratedAt: getCachedTileManifest()?.generated_at,
+                })}
+                data-testid="report-problem"
+              >
+                <IconMessageReport size={16} aria-hidden />
+                Report incorrect or missing information
+              </a>
+            </div>
           </>
         )}
 

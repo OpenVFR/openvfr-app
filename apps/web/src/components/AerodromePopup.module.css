@@ -154,6 +154,15 @@
   border-bottom: none;
 }
 
+.reportLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-decoration: underline;
+}
+
 .sectionTitle {
   font-size: 9px;
   font-weight: 700;

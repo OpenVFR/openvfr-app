@@ -13,9 +13,12 @@
  */
 
 import React, { useEffect, useState } from 'react'
+import * as Application from 'expo-application'
+import { buildReportProblemMailto } from '@open-vfr/shared/reportProblem'
+import { getCachedTileManifest } from '@open-vfr/shared/tileManifest'
 import { AppIcon } from './AppIcon'
 import {
-  View, Text, ScrollView, TouchableOpacity, Pressable,
+  View, Text, ScrollView, TouchableOpacity, Pressable, Linking, Platform,
 } from 'react-native'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { computeRunwayWind, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
@@ -470,6 +473,24 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
                   </Text>
                 </Section>
               )}
+
+              <Pressable
+                onPress={() => {
+                  void Linking.openURL(buildReportProblemMailto({
+                    icao: feature?.icao ?? '', name: feature?.name, appVersion: Application.nativeApplicationVersion,
+                    platform: Platform.OS, dataGeneratedAt: getCachedTileManifest()?.generated_at,
+                  })).catch(() => {})
+                }}
+                accessibilityRole="link"
+                accessibilityLabel="Report incorrect or missing information"
+                hitSlop={{ top: 8, bottom: 8 }}
+                testID="report-problem"
+              >
+                <View style={styles.reportRow}>
+                  <AppIcon name="report" size={16} color={theme.textSecondary} />
+                  <Text style={styles.reportLink}>Report incorrect or missing information</Text>
+                </View>
+              </Pressable>
             </>
           )}
 
@@ -629,6 +650,8 @@ function makeStyles(theme: ScaledTheme) {
     borderWidth:     1,
     borderColor:     'rgba(220,100,0,0.4)',
   },
+  reportRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space2, marginTop: theme.space3, marginBottom: theme.space2 },
+  reportLink: { color: theme.textSecondary, fontSize: 12, textDecorationLine: 'underline', flexShrink: 1 },
   badgeTxt: {
     color:    '#dc6400',
     fontSize: theme.textXs,
