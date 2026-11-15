@@ -4,12 +4,13 @@
  * map screen; it shows while a chart is selected with chartUi.openViewer. Same look as web's ChartViewer.tsx (close, page, zoom).
  */
 import React, { useEffect, useState } from 'react'
-import { ActivityIndicator, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useThemedStyles, type ScaledTheme } from '../styles/theme'
 import {
   chartUi, ChartDocumentError, ensureChartDocument, pdfRenderingAvailable, renderChartPage, useChartUi, type RenderedImage,
 } from '../utils/charts'
+import { openExternal } from '../utils/openExternal'
 
 const ZOOMS = [1, 2, 3] as const
 
@@ -32,7 +33,7 @@ export default function ChartViewer() {
     const abort = new AbortController()
     setBusy(true)
     ensureChartDocument(viewer, abort.signal)
-      .then(setDocUri)
+      .then(uri => { if (!abort.signal.aborted) setDocUri(uri) })
       .catch(e => { if (!abort.signal.aborted) { setError(e instanceof ChartDocumentError ? e.message : 'The chart could not be loaded.'); setBusy(false) } })
     return () => abort.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,7 +61,7 @@ export default function ChartViewer() {
             <Text style={styles.title} numberOfLines={1}>{viewer.icao} · {viewer.chart.title}</Text>
             <Text style={styles.sub} numberOfLines={1}>{viewer.attribution}{viewer.cycle ? ` · effective ${viewer.cycle}` : ''} · not for navigation</Text>
           </View>
-          <Pressable style={styles.btn} onPress={() => { void Linking.openURL(viewer.chart.url) }} accessibilityRole="link" accessibilityLabel="Open at the publisher">
+          <Pressable style={styles.btn} onPress={() => openExternal(viewer.chart.url, 'the publisher’s page')} accessibilityRole="link" accessibilityLabel="Open at the publisher">
             <Text style={styles.btnText}>↗</Text>
           </Pressable>
           <Pressable style={styles.btn} onPress={chartUi.closeViewer} accessibilityRole="button" accessibilityLabel="Close chart">

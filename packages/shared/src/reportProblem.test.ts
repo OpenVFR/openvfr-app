@@ -32,4 +32,10 @@ describe('buildReportProblemMailto', () => {
     expect(m.body).toContain('App: unknown')
     expect(m.body).toContain('Data: unknown')
   })
+
+  it('tells an aerodrome without an ICAO code by its name', () => {
+    const m = parse(buildReportProblemMailto({ icao: '', name: 'Marsvinsholm' }))
+    expect(m.subject).toBe('Airfield data: Marsvinsholm')
+    expect(m.body).toContain('Aerodrome: Marsvinsholm\n')
+  })
 })

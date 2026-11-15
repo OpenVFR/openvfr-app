@@ -21,11 +21,11 @@ export interface ReportProblemContext {
 
 /** `mailto:` URL with subject and a body template; every value is percent-encoded. */
 export function buildReportProblemMailto(ctx: ReportProblemContext): string {
-  const icao = ctx.icao.trim().toUpperCase()
   const name = ctx.name?.trim()
+  const icao = ctx.icao.trim().toUpperCase() || name || 'unknown aerodrome'      // an aerodrome without an ICAO code is told by its name
   const data = ctx.dataGeneratedAt?.slice(0, 10)
   const lines = [
-    `Aerodrome: ${icao}${name ? ` (${name})` : ''}`,
+    `Aerodrome: ${icao}${name && name !== icao ? ` (${name})` : ''}`,
     `App: ${[ctx.platform, ctx.appVersion].filter(Boolean).join(' ') || 'unknown'}`,
     `Data: ${data || 'unknown'}`,
     '',

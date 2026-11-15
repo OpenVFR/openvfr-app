@@ -5,8 +5,9 @@
  * nothing when there are no charts. Same content as web's ChartsSection.tsx.
  */
 import React, { useState } from 'react'
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { CHART_KIND_LABEL, VFR_CHART_KINDS, type AerodromeCharts, type ChartEntry } from '@open-vfr/shared/chartsIndex'
+import { openExternal } from '../utils/openExternal'
 import { useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { Section } from './AerodromeBriefShared'
 import {
@@ -21,7 +22,7 @@ function ChartRow({ chart, ad, styles, onShowOnMap }: { chart: ChartEntry; ad: A
   const onMap = ui.overlay?.chart.id === chart.id
   const canView = ad.display.document && pdfRenderingAvailable
   const canOverlay = ad.display.overlay && ad.display.document && !!chart.georef && pdfRenderingAvailable
-  const open = () => { if (canView) chartUi.openViewer(sel); else void Linking.openURL(chart.url) }
+  const open = () => { if (canView) chartUi.openViewer(sel); else openExternal(chart.url, 'the publisher’s page') }
   return (
     <View style={styles.row}>
       <Text style={styles.kind} accessibilityLabel={CHART_KIND_LABEL[chart.kind]}>{chart.kind}</Text>
@@ -39,7 +40,7 @@ function ChartRow({ chart, ad, styles, onShowOnMap }: { chart: ChartEntry; ad: A
         </Pressable>
       )}
       {canView && (
-        <Pressable style={styles.btn} onPress={() => { void Linking.openURL(chart.url) }} accessibilityRole="link" accessibilityLabel="Open the official document">
+        <Pressable style={styles.btn} onPress={() => openExternal(chart.url, 'the publisher’s page')} accessibilityRole="link" accessibilityLabel="Open the official document">
           <Text style={styles.btnText}>↗</Text>
         </Pressable>
       )}
@@ -67,7 +68,7 @@ export default function ChartsSection({ icao, onShowOnMap }: { icao: string | un
       <Text style={styles.source}>
         <Text
           style={ad.infoUrl ? styles.link : undefined}
-          onPress={ad.infoUrl ? () => { void Linking.openURL(ad.infoUrl!) } : undefined}
+          onPress={ad.infoUrl ? () => openExternal(ad.infoUrl!, 'the page') : undefined}
         >{ad.source.attribution}</Text>
         {ad.cycle ? ` · effective ${ad.cycle}` : ''} · always check the official publication
       </Text>

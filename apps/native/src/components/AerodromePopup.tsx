@@ -14,11 +14,12 @@
 
 import React, { useEffect, useState } from 'react'
 import * as Application from 'expo-application'
-import { buildReportProblemMailto } from '@open-vfr/shared/reportProblem'
+import { buildReportProblemMailto, REPORT_PROBLEM_EMAIL } from '@open-vfr/shared/reportProblem'
+import { openExternal } from '../utils/openExternal'
 import { getCachedTileManifest } from '@open-vfr/shared/tileManifest'
 import { AppIcon } from './AppIcon'
 import {
-  View, Text, ScrollView, TouchableOpacity, Pressable, Linking, Platform,
+  View, Text, ScrollView, TouchableOpacity, Pressable, Platform,
 } from 'react-native'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { computeRunwayWind, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
@@ -476,10 +477,10 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
 
               <Pressable
                 onPress={() => {
-                  void Linking.openURL(buildReportProblemMailto({
+                  openExternal(buildReportProblemMailto({
                     icao: feature?.icao ?? '', name: feature?.name, appVersion: Application.nativeApplicationVersion,
                     platform: Platform.OS, dataGeneratedAt: getCachedTileManifest()?.generated_at,
-                  })).catch(() => {})
+                  }), 'the mail app', `Write to ${REPORT_PROBLEM_EMAIL} instead.`)
                 }}
                 accessibilityRole="link"
                 accessibilityLabel="Report incorrect or missing information"

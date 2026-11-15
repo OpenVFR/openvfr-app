@@ -153,7 +153,10 @@ function touchAndEvict(name: string): void {
   }
 }
 
-const downloads = new Map<string, Promise<string>>()
+/** One download per chart, shared by everyone who asks (the viewer and the map overlay): it has its own abort controller and is
+ *  aborted only when the last caller has left, so one caller leaving never cancels what another still waits for. */
+interface Download { promise: Promise<string>; guard: AbortController; callers: number }
+const downloads = new Map<string, Download>()
 
 function fileLooksLikePdf(f: File): boolean {
   try {
@@ -168,56 +171,81 @@ function fileLooksLikePdf(f: File): boolean {
  */
 export function ensureChartDocument(sel: ChartSelection, signal?: AbortSignal): Promise<string> {
   const k = `${sel.country}/${sel.chart.id}`
-  const running = downloads.get(k)
-  if (running) return running
-  const p: Promise<string> = (async () => {
-    const index = await loadChartsIndex(sel.country)
-    const listed = index ? findChart(index, sel.chart.id) : null
-    if (!index || !listed || !index.display.document) throw new ChartDocumentError('This chart is not available in the app.', 404)
-    const checked = checkChartDocumentUrl(listed.chart.url, documentHostSet(index))
-    if ('error' in checked) throw new ChartDocumentError('This chart cannot be opened in the app.', 404)
-    const name = chartDocumentFileName(sel.country, listed.chart)
-    if (!name) throw new ChartDocumentError('This chart cannot be opened in the app.', 404)
-    const dest = new File(docsDir(), name)
-    const expected = listed.chart.bytes
-    if (dest.exists && (dest.size ?? 0) > 0 && (!expected || dest.size === expected) && fileLooksLikePdf(dest)) {
-      touchAndEvict(name)
-      return dest.uri
+  let entry = downloads.get(k)
+  if (!entry) {
+    const created: Download = { promise: Promise.resolve(''), guard: new AbortController(), callers: 0 }
+    created.promise = fetchChartDocument(sel, created.guard)
+      .finally(() => { if (downloads.get(k) === created) downloads.delete(k) })       // gone before any caller resumes: the next call re-checks the file
+    downloads.set(k, created)
+    entry = created
+  }
+  const dl = entry
+  dl.callers++
+  return new Promise<string>((resolve, reject) => {
+    let left = false
+    const leave = (): boolean => {
+      if (left) return false
+      left = true
+      signal?.removeEventListener('abort', onAbort)
+      dl.callers--
+      return true
     }
-    if (dest.exists) dest.delete()
-    // Stop a download that announces (or grows past) the cap, instead of filling the disk first and checking afterwards.
-    const guard = new AbortController()
-    const onOuterAbort = () => guard.abort()
-    signal?.addEventListener('abort', onOuterAbort, { once: true })
-    try {
-      await File.createDownloadTask(checked.url, dest, {
-        signal: guard.signal,
-        onProgress: ({ bytesWritten, totalBytes }) => {
-          if (bytesWritten > CHART_DOCUMENT_MAX_BYTES || totalBytes > CHART_DOCUMENT_MAX_BYTES) guard.abort()
-        },
-      }).downloadAsync()
-    } catch (err) {
-      if (dest.exists) dest.delete()
-      if (signal?.aborted) throw err
-      throw new ChartDocumentError('The chart could not be downloaded. Check the connection and try again.')
-    } finally {
-      signal?.removeEventListener('abort', onOuterAbort)
+    const onAbort = () => {
+      if (!leave()) return
+      if (dl.callers === 0) dl.guard.abort()
+      reject(new DOMException('The chart request was cancelled.', 'AbortError'))
     }
-    const size = dest.exists ? (dest.size ?? 0) : 0
-    const bad = size === 0 ? 'empty'
-      : size > CHART_DOCUMENT_MAX_BYTES ? 'over the size cap'
-      : expected && size !== expected ? 'not the edition the index lists'
-      : !fileLooksLikePdf(dest) ? 'not a PDF' : null
-    if (bad) {
-      if (dest.exists) dest.delete()
-      console.warn(`[charts] ${checked.url}: downloaded file is ${bad}`)
-      throw new ChartDocumentError('The chart could not be opened (the document is not valid).')
-    }
+    if (signal?.aborted) { onAbort(); return }
+    signal?.addEventListener('abort', onAbort, { once: true })
+    dl.promise.then(uri => { if (leave()) resolve(uri) }, err => { if (leave()) reject(err) })
+  })
+}
+
+async function fetchChartDocument(sel: ChartSelection, guard: AbortController): Promise<string> {
+  const index = await loadChartsIndex(sel.country)
+  const listed = index ? findChart(index, sel.chart.id) : null
+  if (!index || !listed || !index.display.document) throw new ChartDocumentError('This chart is not available in the app.', 404)
+  const checked = checkChartDocumentUrl(listed.chart.url, documentHostSet(index))
+  if ('error' in checked) throw new ChartDocumentError('This chart cannot be opened in the app.', 404)
+  const name = chartDocumentFileName(sel.country, listed.chart)
+  if (!name) throw new ChartDocumentError('This chart cannot be opened in the app.', 404)
+  const dest = new File(docsDir(), name)
+  const expected = listed.chart.bytes
+  if (dest.exists && (dest.size ?? 0) > 0 && (!expected || dest.size === expected) && fileLooksLikePdf(dest)) {
     touchAndEvict(name)
     return dest.uri
-  })().finally(() => { if (downloads.get(k) === p) downloads.delete(k) })     // gone before any caller resumes: the next call re-checks the file
-  downloads.set(k, p)
-  return p
+  }
+  if (dest.exists) dest.delete()
+  // Stop a download that announces (or grows past) the cap, instead of filling the disk first and checking afterwards.
+  let tooLarge = false
+  try {
+    await File.createDownloadTask(checked.url, dest, {
+      signal: guard.signal,
+      onProgress: ({ bytesWritten, totalBytes }) => {
+        if (bytesWritten > CHART_DOCUMENT_MAX_BYTES || totalBytes > CHART_DOCUMENT_MAX_BYTES) { tooLarge = true; guard.abort() }
+      },
+    }).downloadAsync()
+  } catch (err) {
+    if (dest.exists) dest.delete()
+    if (tooLarge) {
+      console.warn(`[charts] ${checked.url}: larger than the ${CHART_DOCUMENT_MAX_BYTES} byte cap, download stopped`)
+      throw new ChartDocumentError('This chart is too large to open in the app. Use “Open at the publisher”.')
+    }
+    if (guard.signal.aborted) throw err                               // every caller left: nobody is waiting for the answer
+    throw new ChartDocumentError('The chart could not be downloaded. Check the connection and try again.')
+  }
+  const size = dest.exists ? (dest.size ?? 0) : 0
+  const bad = size === 0 ? 'empty'
+    : size > CHART_DOCUMENT_MAX_BYTES ? 'over the size cap'
+    : expected && size !== expected ? 'not the edition the index lists'
+    : !fileLooksLikePdf(dest) ? 'not a PDF' : null
+  if (bad) {
+    if (dest.exists) dest.delete()
+    console.warn(`[charts] ${checked.url}: downloaded file is ${bad}`)
+    throw new ChartDocumentError('The chart could not be opened (the document is not valid).')
+  }
+  touchAndEvict(name)
+  return dest.uri
 }
 
 // ── Rendering a page ────────────────────────────────────────────────────────

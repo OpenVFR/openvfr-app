@@ -11,7 +11,7 @@ import {
 } from 'react-native'
 import Svg, { Path, Rect, Line } from 'react-native-svg'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
-import { AIRSPACE_COLORS as AC, CONTROLLED_CLASSES, controlledStyle } from '@open-vfr/shared/airspaceColors'
+import { AIRSPACE_COLORS as AC, CONTROLLED_CLASSES, GLIDING_SECTOR_TYPE, controlledStyle } from '@open-vfr/shared/airspaceColors'
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { extractDesignators } from '@open-vfr/shared/notamDesignator'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
@@ -130,7 +130,7 @@ const CLASS_LABEL: Record<string, string> = {
 const TYPE_LABEL: Record<string, string> = {
   CTR: 'CTR', TMA: 'TMA', CTA: 'CTA', FIR: 'FIR', UIR: 'UIR',
   D: 'Danger', R: 'Restricted', P: 'Prohibited',
-  TRA: 'TRA', GLDR: 'Glider', GLIDING: 'Gliding sector', MODEL: 'Model',
+  TRA: 'TRA', GLDR: 'Glider', [GLIDING_SECTOR_TYPE]: 'Gliding sector', MODEL: 'Model',
 }
 
 // ── polygon → SVG path ───────────────────────────────────────────────────────

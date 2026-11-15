@@ -131,6 +131,31 @@ describe('ensureChartDocument', () => {
     expect(downloads.length).toBe(1)
   })
 
+  it('one caller leaving does not cancel the download another still waits for; the last one leaving does', async () => {
+    const m = await load()
+    const first = new AbortController()
+    const a = m.ensureChartDocument(sel('vac1'), first.signal)        // e.g. the viewer
+    const b = m.ensureChartDocument(sel('vac1'))                      // e.g. the map overlay
+    first.abort()
+    await expect(a).rejects.toMatchObject({ name: 'AbortError' })
+    expect(await b).toContain('se-vac1.pdf')                          // the overlay still gets its chart
+    expect(downloads.length).toBe(1)
+    disk.clear()
+    const only = new AbortController()
+    const c = m.ensureChartDocument(sel('vac1'), only.signal)
+    only.abort()
+    await expect(c).rejects.toMatchObject({ name: 'AbortError' })
+    expect(await m.ensureChartDocument(sel('vac1'))).toContain('se-vac1.pdf')     // nothing is stuck: the next open works
+    const gone = new AbortController(); gone.abort()
+    await expect(m.ensureChartDocument(sel('vac1'), gone.signal)).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  it('a document over the size cap says so, not "check the connection"', async () => {
+    const m = await load()
+    downloadBytes = { byteLength: 10 ** 9 } as unknown as Uint8Array
+    await expect(m.ensureChartDocument(sel('vac1'))).rejects.toThrow(/too large/)
+  })
+
   it('refuses a chart the index does not list, or when documents are not displayable', async () => {
     let m = await load()
     await expect(m.ensureChartDocument(sel('nope'))).rejects.toThrow(/not available/)
