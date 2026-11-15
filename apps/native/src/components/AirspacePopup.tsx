@@ -130,7 +130,7 @@ const CLASS_LABEL: Record<string, string> = {
 const TYPE_LABEL: Record<string, string> = {
   CTR: 'CTR', TMA: 'TMA', CTA: 'CTA', FIR: 'FIR', UIR: 'UIR',
   D: 'Danger', R: 'Restricted', P: 'Prohibited',
-  TRA: 'TRA', GLDR: 'Glider', MODEL: 'Model',
+  TRA: 'TRA', GLDR: 'Glider', GLIDING: 'Gliding sector', MODEL: 'Model',
 }
 
 // ── polygon → SVG path ───────────────────────────────────────────────────────

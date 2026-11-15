@@ -148,6 +148,7 @@ const TYPE_LABEL: Record<string, string> = {
   P:     'Prohibited',
   TRA:   'TRA',
   GLDR:  'Glider',
+  GLIDING: 'Gliding sector',
   MODEL: 'Model',
   RMZ:   'RMZ',
   ATZ:   'ATZ',

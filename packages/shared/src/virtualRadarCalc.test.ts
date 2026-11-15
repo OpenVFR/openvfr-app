@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import { plannedAltitudeLine, DEFAULT_PERF_MODEL } from './virtualRadarCalc'
+import { plannedAltitudeLine, buildVirtualRadarProfile, DEFAULT_PERF_MODEL } from './virtualRadarCalc'
 describe('plannedAltitudeLine on a short route', () => {
   const prof = [
     { distNm: 0, altFt: 1700 }, { distNm: 2.7, altFt: 1700 },
@@ -20,5 +20,21 @@ describe('plannedAltitudeLine on a short route', () => {
     const line = plannedAltitudeLine(long, 54, DEFAULT_PERF_MODEL, 20, 20)
     expect(line.some((p) => p.altFt === 3500 && p.distNm > 10 && p.distNm < 45)).toBe(true)
     expect(line[line.length - 1].altFt).toBe(20)
+  })
+})
+
+describe('the route profile and gliding sectors', () => {
+  const square = (name: string, cls: string, type: string) => ({
+    type: 'Feature' as const, geometry: { type: 'Polygon' as const, coordinates: [[[13.4, 55.4], [13.6, 55.4], [13.6, 55.6], [13.4, 55.6], [13.4, 55.4]]] },
+    properties: { name, class: cls, type, lower: 'SFC', upper: 'FL060', lower_ft: 0, upper_ft: 6000 },
+  })
+  const run = (...features: ReturnType<typeof square>[]) => buildVirtualRadarProfile(
+    [{ name: 'A', lat: 55.5, lng: 13.3 }, { name: 'B', lat: 55.5, lng: 13.7 }] as never, [],
+    { type: 'FeatureCollection', features } as never, { type: 'FeatureCollection', features: [] } as never,
+  ).airspaceBands.map(b => b.name)
+
+  it('draws a glider site and a model area, but not a federation\'s gliding sector (a band per sector would swamp the chart)', () => {
+    expect(run(square('SITE', 'GLDR', 'GLDR'), square('MODEL', 'MODEL', 'MODEL'), square('SECTOR', 'GLDR', 'GLIDING')).sort()).toEqual(['MODEL', 'SITE'])
+    expect(run(square('SECTOR', 'GLDR', 'GLIDING'))).toEqual([])
   })
 })

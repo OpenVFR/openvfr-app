@@ -490,6 +490,9 @@ export function buildVirtualRadarProfile(
     const p = feature.properties as AirspaceProps
     if (!p) continue
     if (airspaceEnded(p)) continue
+    // A federation's soaring sectors (type GLIDING, 100+ large polygons) are for the map and for glider pilots: on a route profile they are
+    // a band per sector crossed with nothing to separate from. Glider sites (GLDR) and model areas still draw.
+    if (p.type === 'GLIDING') continue
 
     const lowerFt = Number(p.lower_ft ?? 0)
     const upperFt = Number(p.upper_ft ?? 0)
