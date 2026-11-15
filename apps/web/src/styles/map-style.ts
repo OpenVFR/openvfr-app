@@ -313,9 +313,9 @@ function controlledLayers(k: CKind): StyleSpecification['layers'] {
   ] as StyleSpecification['layers']
 }
 
-/** The four layers (fill, inset band, border, label) of one activity class: `id` is the group (glider | model). */
-function activityLayers(id: string, cls: string, fill: string, border: string): StyleSpecification['layers'] {
-  const filter = ['==', ['get', 'class'], cls] as unknown as FilterSpecification
+/** The four layers (fill, inset band, border, label) of one activity class: `id` is the group (glider | model), `filter` its class
+ *  (GLIDER_FILTER / MODEL_FILTER, the same one AIRSPACE_BASE_FILTERS adds the altitude ceiling to). */
+function activityLayers(id: string, filter: FilterSpecification, fill: string, border: string): StyleSpecification['layers'] {
   return [
     { id: `airspace-fill-${id}`, type: 'fill', source: 'ofm', filter, layout: { visibility: 'none' },
       paint: { 'fill-color': fill, 'fill-outline-color': AC.transparent } },
@@ -1407,8 +1407,8 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
       },
 
       // ── Layer 7: Glider areas (GLDR) and model flying areas (MODEL), one switch each — default off ──────────
-      ...activityLayers('glider', 'GLDR', AC.gldrFill, AC.gldrBorder),
-      ...activityLayers('model', 'MODEL', AC.modelFill, AC.modelBorder),
+      ...activityLayers('glider', GLIDER_FILTER, AC.gldrFill, AC.gldrBorder),
+      ...activityLayers('model', MODEL_FILTER, AC.modelFill, AC.modelBorder),
 
       // ── Layer 8: VOR navaids ─────────────────────────────────────────────
       // VOR symbol layer — canvas-drawn hexagon compass-rose (nav-vor).

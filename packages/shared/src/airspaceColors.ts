@@ -10,6 +10,10 @@
  * All values are rgba() strings — understood by both MapLibre GL JS and GL Native.
  */
 
+/** The `type` of a federation's gliding sector in the airspace data (class GLDR): AIXM's activity code for gliding. The country data
+ *  pipeline writes it; the apps give these sectors their own warning category and keep them off the route profile. */
+export const GLIDING_SECTOR_TYPE = 'GLIDING'
+
 export const AIRSPACE_COLORS = {
   /** Class C — CTR (Control Zone, stronger) */
   cCtrFill:    'rgba(180, 50, 180, 0.12)',

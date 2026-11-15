@@ -11,6 +11,8 @@
  */
 
 export type AirspaceCategory = 'restricted' | 'classA' | 'controlled' | 'classEF' | 'zones' | 'glider' | 'gliding' | 'model' | 'activity'
+import { GLIDING_SECTOR_TYPE } from './airspaceColors'
+
 export type AlertLevel = 'alert' | 'info' | 'ignore'
 export type AirspaceAlertLevels = Record<AirspaceCategory, AlertLevel>
 
@@ -33,14 +35,16 @@ export const DEFAULT_AIRSPACE_LEVELS: AirspaceAlertLevels = {
   classEF:    'ignore',
   zones:      'info',
   glider:     'info',
-  // Large soaring sectors agreed with the ATS (a federation's file, 100+ of them): map and popup only, no look-ahead or route-check noise
-  // for powered traffic. A glider pilot turns it up.
+  // Large soaring sectors agreed with the ATS (a federation's file, 100+ of them): by default no look-ahead alert and no entered/left
+  // notice for powered traffic; a glider pilot turns it up. The route profile and the pre-flight route check never include them (see
+  // buildVirtualRadarProfile), whatever this level is.
   gliding:    'ignore',
   model:      'info',
   activity:   'info',
 }
 
 const LEVELS: readonly AlertLevel[] = ['alert', 'info', 'ignore']
+const isLevel = (v: unknown): v is AlertLevel => typeof v === 'string' && (LEVELS as readonly string[]).includes(v)
 
 /** Category of an airspace from its display class and type. */
 export function airspaceCategory(cls: string, type: string): AirspaceCategory {
@@ -49,7 +53,7 @@ export function airspaceCategory(cls: string, type: string): AirspaceCategory {
   if (cls === 'B' || cls === 'C' || cls === 'D') return 'controlled'
   if (cls === 'E' || cls === 'F') return 'classEF'
   if (['ATZ', 'RMZ', 'TMZ'].includes(cls) || ['ATZ', 'RMZ', 'TMZ'].includes(type)) return 'zones'
-  if (type === 'GLIDING') return 'gliding'          // a federation's soaring sector (class GLDR, type GLIDING): see gliding_sectors_ext.py
+  if (type === GLIDING_SECTOR_TYPE) return 'gliding'          // a federation's soaring sector (class GLDR)
   if (cls === 'GLDR') return 'glider'
   if (cls === 'MODEL') return 'model'
   return 'activity'
@@ -60,15 +64,15 @@ export function resolveAirspaceLevels(raw?: Partial<Record<string, unknown>> | n
   const out = { ...DEFAULT_AIRSPACE_LEVELS }
   for (const c of AIRSPACE_CATEGORIES) {
     const v = raw?.[c.key]
-    if (typeof v === 'string' && (LEVELS as readonly string[]).includes(v)) out[c.key] = v as AlertLevel
+    if (isLevel(v)) out[c.key] = v
     if (!c.canIgnore && out[c.key] === 'ignore') out[c.key] = 'info'
   }
   // 'activity' was one setting for glider and model areas; it is now two (and the sectors have their own). A stored choice carries over
   // to the two it covered, so nobody's warnings change on upgrade; the sectors keep their own default.
   const legacy = raw?.['activity']
-  if (typeof legacy === 'string' && (LEVELS as readonly string[]).includes(legacy)) {
-    if (!(typeof raw?.['glider'] === 'string')) out.glider = legacy as AlertLevel
-    if (!(typeof raw?.['model'] === 'string')) out.model = legacy as AlertLevel
+  if (isLevel(legacy)) {
+    if (!isLevel(raw?.['glider'])) out.glider = legacy
+    if (!isLevel(raw?.['model'])) out.model = legacy
   }
   return out
 }

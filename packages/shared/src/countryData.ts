@@ -68,7 +68,7 @@ export function countryMefFile(country: string): string {
 }
 
 /**
- * The files the curation publish uploads by hand (openvfr-infra push-curated.sh): preview aerodromes, public and preview
+ * The files the curation publish step uploads: preview aerodromes, public and preview
  * details, public and preview charts. (The public aerodromes file is the normal `aerodromes` dataset.) They have no
  * data_loads row or refresh job, so the admin's file table must list them as expected.
  */

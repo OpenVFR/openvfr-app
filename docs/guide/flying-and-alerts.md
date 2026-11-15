@@ -107,7 +107,8 @@ designed to stay quiet:
   restricted, class A and B/C/D Alert; E/F Ignore; zones, glider areas, model
   flying areas and other areas Info; **gliding sectors** (the federation's large
   soaring sectors) Ignore, so they neither warn nor give entered/left notices
-  unless you raise them. Restricted areas and class A can be set to Info but never Ignore.
+  unless you raise them. The route profile and the route check never include
+  gliding sectors, whatever the level. Restricted areas and class A can be set to Info but never Ignore.
   Several yellow airspaces at once merge into one "N airspaces" card.
 - **Entered and left** notices for airspace have their own switch.
 - **Aerodrome nearby** (within 1 NM and 1,500 ft, not on the route) only

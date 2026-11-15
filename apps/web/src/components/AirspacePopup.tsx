@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { scrollIntoContainer } from '../utils/scrollIntoContainer'
 import css from './AirspacePopup.module.css'
-import { AIRSPACE_COLORS as AC, CONTROLLED_CLASSES, controlledStyle } from '@open-vfr/shared/airspaceColors'
+import { AIRSPACE_COLORS as AC, CONTROLLED_CLASSES, GLIDING_SECTOR_TYPE, controlledStyle } from '@open-vfr/shared/airspaceColors'
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { extractDesignators } from '@open-vfr/shared/notamDesignator'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
@@ -148,7 +148,7 @@ const TYPE_LABEL: Record<string, string> = {
   P:     'Prohibited',
   TRA:   'TRA',
   GLDR:  'Glider',
-  GLIDING: 'Gliding sector',
+  [GLIDING_SECTOR_TYPE]: 'Gliding sector',
   MODEL: 'Model',
   RMZ:   'RMZ',
   ATZ:   'ATZ',

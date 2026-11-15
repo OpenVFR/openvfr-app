@@ -54,6 +54,7 @@ import {
 import type { Feature, Geometry, Polygon, MultiPolygon } from 'geojson'
 import type { RouteWaypoint, LegOverride } from './types'
 import { iasToTas } from './airspeed'
+import { GLIDING_SECTOR_TYPE } from './airspaceColors'
 import { apiAuthHeaders } from './apiAuth'
 import { AIRSPACE_COLORS, CONTROLLED_CLASSES, airspaceDisplayClass, controlledStyle } from './airspaceColors'
 import { limitIsAgl } from './airspaceAltitude'
@@ -490,9 +491,10 @@ export function buildVirtualRadarProfile(
     const p = feature.properties as AirspaceProps
     if (!p) continue
     if (airspaceEnded(p)) continue
-    // A federation's soaring sectors (type GLIDING, 100+ large polygons) are for the map and for glider pilots: on a route profile they are
-    // a band per sector crossed with nothing to separate from. Glider sites (GLDR) and model areas still draw.
-    if (p.type === 'GLIDING') continue
+    // A federation's soaring sectors (100+ large polygons) are for the map and for glider pilots: on a route profile they are a band per
+    // sector crossed with nothing to separate from, and the route check works from these bands, so it never sees them either (the
+    // 'Gliding sectors' alert level governs look-ahead alerts and notices only). Glider sites (GLDR) and model areas still draw.
+    if (p.type === GLIDING_SECTOR_TYPE) continue
 
     const lowerFt = Number(p.lower_ft ?? 0)
     const upperFt = Number(p.upper_ft ?? 0)

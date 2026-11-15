@@ -4301,10 +4301,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
     // loading (which is most of the time when the map is busy), and the one-shot
     // 'styledata' fallback then never fires -> the slider change was silently dropped.
     // setFilter only needs the style object, which exists once mapReady is true.
-    try {
-      applyAltitudeCeiling(map, ceilingFt)
-    } catch {
-      map.once('styledata', () => applyAltitudeCeiling(map, ceilingFt))
+    const apply = () => applyAltitudeCeiling(map, ceilingFt)
+    apply()
+    // applyAltitudeCeiling skips a layer that does not exist yet (right after a style swap): run once more when the style
+    // data arrives. The listener is removed when the slider moves again or the map goes away.
+    if (!map.isStyleLoaded()) {
+      map.once('styledata', apply)
+      return () => { map.off('styledata', apply) }
     }
   }, [ceilingFt, mapReady])
 
