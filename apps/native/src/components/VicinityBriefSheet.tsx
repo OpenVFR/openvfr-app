@@ -124,25 +124,19 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
         primaryFreq: pickPrimary(a.frequencies), frequencies: a.frequencies,
       }))
 
-  const badgeCount = tab === 'freq' ? displayedFreqs.length : vicinity.length
-
   return (
     <>
       {!controlled && (
-        <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)} activeOpacity={0.85}>
+        <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)} activeOpacity={0.85}
+          accessibilityRole="button" accessibilityLabel="Airfield Brief">
           <AppIcon name="news" size={19} color={theme.accentBlue} />
-          {badgeCount > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeTxt}>{badgeCount}</Text>
-            </View>
-          )}
         </TouchableOpacity>
       )}
 
       <NativeSheet
         isPresented={open}
         onDismiss={() => setOpen(false)}
-        title="Vicinity Briefing"
+        title="Airfield Brief"
         testID="vicinity-sheet"
         contentContainerStyle={styles.body}
         fixedTop={(
@@ -298,11 +292,6 @@ function makeStyles(theme: ScaledTheme) {
     backgroundColor: theme.surfaceSheet, borderWidth: 1, borderColor: theme.borderDefault,
     alignItems: 'center' as const, justifyContent: 'center' as const,
   },
-  badge: {
-    position: 'absolute' as const, top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8,
-    backgroundColor: theme.accentBlue, alignItems: 'center' as const, justifyContent: 'center' as const, paddingHorizontal: 3,
-  },
-  badgeTxt: { color: '#fff', fontSize: 9, fontWeight: '700' as const },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
     backgroundColor: theme.surfaceSheet, borderTopLeftRadius: 20, borderTopRightRadius: 20,
