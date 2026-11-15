@@ -13,7 +13,8 @@ import { useLocalInfo } from '../utils/aerodromeDetails'
 import css from './LocalInfoSection.module.css'
 
 interface Props {
-  icao: string
+  /** The aerodrome's id (ICAO, else local id); nothing is shown without one. */
+  icao?: string
   /** Section wrapper/title classes of the host popup, so it matches its siblings. */
   sectionClass: string
   titleClass: string
