@@ -18,7 +18,7 @@ The map combines a basemap with aviation layers. Open the layer panel (the
 
 | Group | Layers |
 |---|---|
-| Airspace | CTR, TMA / CTA, RMZ / ATZ / TMZ, Restricted / Danger / TRA, Glider / Model areas, Regional NOTAMs |
+| Airspace | CTR, TMA / CTA, RMZ / ATZ / TMZ, Restricted / Danger / TRA, Glider areas / sectors, Model flying areas, Regional NOTAMs |
 | Points | VOR, NDB, MRP (reporting points), VFR waypoints, Aerodromes, Runways and taxiways, Obstacles, Landmarks, Your places (web) |
 | Terrain | Land use, Hillshade (relief), Contour lines, Terrain colour |
 | Live | Air traffic |
@@ -29,9 +29,11 @@ display** sheet (sections Basemap, Airspace Ceiling, Airspace, Points,
 Terrain, Weather, Live); on the web in the **Layers** panel (sections
 Basemap, Altitude Filter, Airspace, Navigation, Terrain, Traffic, Weather).
 
-When you first open the app, Glider / Model areas, Hillshade, Contour
-lines, Terrain colour, Air traffic and Wind arrows are off; everything else
-listed above is on. On the web, VFR waypoints are also off to begin with.
+When you first open the app, Glider areas / sectors, Model flying areas,
+Hillshade, Contour lines, Terrain colour, Air traffic and Wind arrows are off;
+everything else listed above is on. On the web, VFR waypoints are also off to begin with.
+
+**Glider areas / sectors** shows the glider sites (the small areas around a field where gliders launch) and, where the national gliding federation publishes them, its soaring sectors (Sweden: Svenska Segelflygförbundet's file, not part of the AIP, so check the current release). **Model flying areas** are a separate layer.
 
 Differences on native: VOR and NDB are one **Navaids** toggle, reporting
 points and VFR waypoints are one **Waypoints** toggle (on by default), and

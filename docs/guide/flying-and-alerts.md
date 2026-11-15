@@ -104,8 +104,10 @@ designed to stay quiet:
   and use a vertical buffer (default 500 ft; set 0 to warn only on
   climb/descent projections). Each category has a level: **Alert** (a red or
   yellow card), **Info** (a quiet blue chip) or **Ignore**. Defaults:
-  restricted, class A and B/C/D Alert; E/F Ignore; zones and glider/other
-  Info. Restricted areas and class A can be set to Info but never Ignore.
+  restricted, class A and B/C/D Alert; E/F Ignore; zones, glider areas, model
+  flying areas and other areas Info; **gliding sectors** (the federation's large
+  soaring sectors) Ignore, so they neither warn nor give entered/left notices
+  unless you raise them. Restricted areas and class A can be set to Info but never Ignore.
   Several yellow airspaces at once merge into one "N airspaces" card.
 - **Entered and left** notices for airspace have their own switch.
 - **Aerodrome nearby** (within 1 NM and 1,500 ft, not on the route) only

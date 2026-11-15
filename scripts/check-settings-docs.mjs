@@ -161,12 +161,12 @@ if (units) {
 const layerSrc = read('apps/native/src/components/MapDisplaySheet.tsx');
 const layerBlock = layerSrc.match(/export const LAYER_DEFAULTS: LayerState = \{([\s\S]*?)\n\}/)?.[1] ?? '';
 const offKeys = [...layerBlock.matchAll(/(\w+):\s*false/g)].map((m) => m[1]).sort();
-const expectedOff = ['activity', 'contours', 'hillshade', 'satellite', 'terrainColor', 'traffic', 'wind'];
+const expectedOff = ['contours', 'glider', 'hillshade', 'model', 'satellite', 'terrainColor', 'traffic', 'wind'];
 if (JSON.stringify(offKeys) !== JSON.stringify(expectedOff)) {
   fail(`native LAYER_DEFAULTS off-by-default layers changed (${offKeys.join(', ')}): update the "first open" paragraph in docs/guide/map-and-layers.md and expectedOff in scripts/check-settings-docs.mjs`);
 }
 const layersDoc = read('docs/guide/map-and-layers.md');
-for (const phrase of ['Glider / Model areas, Hillshade, Contour', 'lines, Terrain colour, Air traffic and Wind']) {
+for (const phrase of ['Glider areas / sectors, Model flying areas, Hillshade, Contour', 'lines, Terrain colour, Air traffic and Wind']) {
   if (!layersDoc.replace(/\s+/g, ' ').includes(phrase.replace(/\s+/g, ' '))) fail(`map-and-layers.md: default-off layer list no longer says "${phrase}"`);
 }
 
