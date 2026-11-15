@@ -1,0 +1,21 @@
+/* Same look as native's header "+ Route" pill: accent fill, dark text, fully rounded. */
+.btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px 0 8px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent-blue);
+  color: #0b1220;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: filter 0.1s;
+}
+.btn:hover { filter: brightness(1.12); }
+.btn:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }

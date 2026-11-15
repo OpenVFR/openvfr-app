@@ -31,6 +31,7 @@ import { aerodromeClosure, closureLabel } from '@open-vfr/shared/aerodromeClosur
 import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from '@open-vfr/shared/atcStatus'
 import { API_BASE_URL } from '../utils/env'
 import ChartsSection from './ChartsSection'
+import RouteActionButton, { type RouteActionProps } from './RouteActionButton'
 import LocalInfoSection from './LocalInfoSection'
 import { setCircuitFocus, useCircuitFocus } from '../utils/aerodromeDetails'
 import { loadStations as loadStationsShared, type StationRecord } from '@open-vfr/shared/wxStations'
@@ -142,7 +143,7 @@ interface Props {
   onClose: () => void
   /** Route button in the header ("Start route here", "Add to route", "Direct to"
    *  ...); omitted where the popup is embedded elsewhere. */
-  routeAction?: { label: string; onClick: () => void }
+  routeAction?: RouteActionProps
   /**
    * Reports the current wind-derived per-end favored/severity state so the
    * map's 'runway-threshold-label' layer can highlight the same favored
@@ -683,6 +684,7 @@ export default function AerodromePopup({
               <div className={css.notamHint}>⏰ Active NOTAM may have changed opening hours — check NOTAMs tab</div>
             )}
           </div>
+          {routeAction && <RouteActionButton {...routeAction} />}
           <button
             className={`${css.homeBtn} ${isHome ? css.homeBtnActive : ''}`}
             onClick={() => onSetHome(p.icao, p.name, lng, lat)}
@@ -697,11 +699,6 @@ export default function AerodromePopup({
         </div>
 
         {/* ── Tab bar ─────────────────────────────────────────────────── */}
-        {routeAction && (
-          <div className={css.routeRow}>
-            <button className={css.routeBtn} onClick={routeAction.onClick}>{routeAction.label}</button>
-          </div>
-        )}
         <div className={css.tabBar}>
           <button
             className={`${css.tab} ${activeTab === 'info' ? css.tabActive : ''}`}

@@ -1,4 +1,5 @@
 import type React from 'react'
+import RouteActionButton, { type RouteActionProps } from './RouteActionButton'
 import css from './FeaturePopup.module.css'
 import { TRAFFIC_CATEGORY_LABEL, trafficDeviceLabel, trafficNetworkLabel } from '@open-vfr/shared/trafficState'
 import { IconX } from '@tabler/icons-react'
@@ -349,7 +350,7 @@ interface Props {
   feature: PointFeature
   onClose: () => void
   /** Route button (navaids, reporting points): "Start route here", "Add to route", "Direct to"... */
-  routeAction?: { label: string; onClick: () => void }
+  routeAction?: RouteActionProps
 }
 
 export default function FeaturePopup({ feature: f, onClose, routeAction }: Props) {
@@ -387,9 +388,7 @@ export default function FeaturePopup({ feature: f, onClose, routeAction }: Props
     <div className={css.panel}>
       <div className={css.header}>
         {header}
-        {routeAction && (
-          <button className={css.routeBtn} onClick={routeAction.onClick}>{routeAction.label}</button>
-        )}
+        {routeAction && <span className={css.routeAction}><RouteActionButton {...routeAction} /></span>}
         <button className={css.close} onClick={onClose} aria-label="Close"><IconX size={14} aria-hidden="true" /></button>
       </div>
       {body}

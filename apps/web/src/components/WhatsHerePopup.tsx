@@ -88,6 +88,8 @@ interface Props {
 export interface RouteAction {
   kind: 'route' | 'direct'
   label: string
+  /** The word on the popup's header button (native's wording: "Route", "Direct"). */
+  short?: string
   onClick: () => void
 }
 

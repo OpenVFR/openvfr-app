@@ -1061,6 +1061,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // route is a shortcut (the rest of the route stays).
   const directToLabel = (target: { lat: number; lng: number }) =>
     DIRECT_ACTION_LABELS[directActionKind(routeWaypoints, activeLeg, target)].long
+  const directToShort = (target: { lat: number; lng: number }) =>
+    DIRECT_ACTION_LABELS[directActionKind(routeWaypoints, activeLeg, target)].short
   const removeWaypointAtRef = useRef(removeWaypointAt)
   removeWaypointAtRef.current = removeWaypointAt
   const flyingModeRef   = useRef<FlyingMode>('off')
@@ -5128,8 +5130,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
     // The route button on a feature: start / extend the route on the ground
     // (map clicks on features then keep extending it); in flight, fly there.
     routeActionFor: (wp: RouteWaypoint, rejoin: boolean): RouteAction => inFlightRoute
-      ? { kind: 'direct', label: directToLabel(wp), onClick: () => flyDirect(wp, rejoin) }
-      : { kind: 'route', label: routeWaypoints.length > 0 ? 'Add to route' : 'Start route here', onClick: () => drawerProps.onAddToRoute(wp) },
+      ? { kind: 'direct', label: directToLabel(wp), short: directToShort(wp), onClick: () => flyDirect(wp, rejoin) }
+      : { kind: 'route', label: routeWaypoints.length > 0 ? 'Add to route' : 'Start route here', short: 'Route', onClick: () => drawerProps.onAddToRoute(wp) },
     onSaveHereUserWaypoint: drawerProps.onSaveHereUserWaypoint,
     onTrackPoint: inFlightRoute
       ? (wp: RouteWaypoint, kind: TrackedPoint['kind']) => setTrackedPoint({ lat: wp.lat, lng: wp.lng, name: wp.name ?? 'Point', kind })
