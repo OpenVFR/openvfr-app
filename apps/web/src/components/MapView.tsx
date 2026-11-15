@@ -4072,8 +4072,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
       })
     }
 
-    if (map.isStyleLoaded()) apply()
-    else map.once('styledata', apply)
+    // apply() is guarded per layer (getLayer); isStyleLoaded() is false while tiles load, so never gate on it.
+    apply()
+    if (!map.isStyleLoaded()) map.once('styledata', apply)
 
     // BUG FIX: mapReady added -- same class of bug as the layer-visibility
     // effect above (see its comment for the full explanation). If a pilot
@@ -4296,9 +4297,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const map = mapRef.current
     if (!map) return
 
-    if (map.isStyleLoaded()) {
+    // Not guarded by map.isStyleLoaded(): that is also false while tiles or sources are
+    // loading (which is most of the time when the map is busy), and the one-shot
+    // 'styledata' fallback then never fires -> the slider change was silently dropped.
+    // setFilter only needs the style object, which exists once mapReady is true.
+    try {
       applyAltitudeCeiling(map, ceilingFt)
-    } else {
+    } catch {
       map.once('styledata', () => applyAltitudeCeiling(map, ceilingFt))
     }
   }, [ceilingFt, mapReady])
