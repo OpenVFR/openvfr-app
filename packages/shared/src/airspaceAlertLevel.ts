@@ -10,7 +10,7 @@
  * `info` but never ignored.
  */
 
-export type AirspaceCategory = 'restricted' | 'classA' | 'controlled' | 'classEF' | 'zones' | 'glider' | 'soaring' | 'model' | 'activity'
+export type AirspaceCategory = 'restricted' | 'classA' | 'controlled' | 'classEF' | 'zones' | 'glider' | 'gliding' | 'model' | 'activity'
 export type AlertLevel = 'alert' | 'info' | 'ignore'
 export type AirspaceAlertLevels = Record<AirspaceCategory, AlertLevel>
 
@@ -21,7 +21,7 @@ export const AIRSPACE_CATEGORIES: ReadonlyArray<{ key: AirspaceCategory; label: 
   { key: 'classEF',    label: 'Class E / F',               canIgnore: true },
   { key: 'zones',      label: 'ATZ / RMZ / TMZ',           canIgnore: true },
   { key: 'glider',     label: 'Glider areas',              canIgnore: true },
-  { key: 'soaring',    label: 'Gliding sectors',           canIgnore: true },
+  { key: 'gliding',    label: 'Gliding sectors',           canIgnore: true },
   { key: 'model',      label: 'Model flying areas',        canIgnore: true },
   { key: 'activity',   label: 'Other activity areas',      canIgnore: true },
 ]
@@ -35,7 +35,7 @@ export const DEFAULT_AIRSPACE_LEVELS: AirspaceAlertLevels = {
   glider:     'info',
   // Large soaring sectors agreed with the ATS (a federation's file, 100+ of them): map and popup only, no look-ahead or route-check noise
   // for powered traffic. A glider pilot turns it up.
-  soaring:    'ignore',
+  gliding:    'ignore',
   model:      'info',
   activity:   'info',
 }
@@ -49,7 +49,7 @@ export function airspaceCategory(cls: string, type: string): AirspaceCategory {
   if (cls === 'B' || cls === 'C' || cls === 'D') return 'controlled'
   if (cls === 'E' || cls === 'F') return 'classEF'
   if (['ATZ', 'RMZ', 'TMZ'].includes(cls) || ['ATZ', 'RMZ', 'TMZ'].includes(type)) return 'zones'
-  if (type === 'SOAR') return 'soaring'          // a federation's soaring sector (class GLDR, type SOAR): see gliding_sectors_ext.py
+  if (type === 'GLIDING') return 'gliding'          // a federation's soaring sector (class GLDR, type GLIDING): see gliding_sectors_ext.py
   if (cls === 'GLDR') return 'glider'
   if (cls === 'MODEL') return 'model'
   return 'activity'
@@ -74,7 +74,7 @@ export function resolveAirspaceLevels(raw?: Partial<Record<string, unknown>> | n
 }
 
 const ALERT_SEVERITY: Record<AirspaceCategory, 'red' | 'yellow'> = {
-  restricted: 'red', classA: 'red', controlled: 'yellow', classEF: 'yellow', zones: 'yellow', glider: 'yellow', soaring: 'yellow', model: 'yellow',
+  restricted: 'red', classA: 'red', controlled: 'yellow', classEF: 'yellow', zones: 'yellow', glider: 'yellow', gliding: 'yellow', model: 'yellow',
   activity: 'yellow',
 }
 
@@ -92,5 +92,5 @@ export function applyAirspaceLevel<T extends { cls: string; type: string; severi
 /** Whether entered / left notices are given for an airspace. They have no per-category setting of their own, except that a category
  *  set to "ignore" for the large soaring sectors stays quiet here too (130 of them: a notice every few minutes over Skane). */
 export function noticeWanted(cls: string, type: string, levels: AirspaceAlertLevels): boolean {
-  return airspaceCategory(cls, type) !== 'soaring' || levels.soaring !== 'ignore'
+  return airspaceCategory(cls, type) !== 'gliding' || levels.gliding !== 'ignore'
 }

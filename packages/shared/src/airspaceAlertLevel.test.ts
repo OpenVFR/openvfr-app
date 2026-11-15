@@ -15,22 +15,22 @@ describe('airspaceCategory', () => {
     expect(airspaceCategory('GLDR', '')).toBe('glider')
     expect(airspaceCategory('GLDR', 'GLDR')).toBe('glider')
     expect(airspaceCategory('MODEL', 'MODEL')).toBe('model')
-    expect(airspaceCategory('GLDR', 'SOAR')).toBe('soaring')       // a federation's soaring sector: class GLDR, type SOAR
+    expect(airspaceCategory('GLDR', 'GLIDING')).toBe('gliding')       // a federation's soaring sector: class GLDR, type SOAR
     expect(airspaceCategory('X', '')).toBe('activity')             // anything else of that kind
   })
 
   it('keeps glider sites and the large soaring sectors apart: the sectors are ignored by default', () => {
     const L = DEFAULT_AIRSPACE_LEVELS
     expect(applyAirspaceLevel({ cls: 'GLDR', type: 'GLDR', severity: 'yellow' as const }, L)?.severity).toBe('blue')    // a glider site: quiet chip
-    expect(applyAirspaceLevel({ cls: 'GLDR', type: 'SOAR', severity: 'yellow' as const }, L)).toBeNull()                 // a sector: no warning
-    const glider = resolveAirspaceLevels({ soaring: 'info' })
-    expect(applyAirspaceLevel({ cls: 'GLDR', type: 'SOAR', severity: 'yellow' as const }, glider)?.severity).toBe('blue')
+    expect(applyAirspaceLevel({ cls: 'GLDR', type: 'GLIDING', severity: 'yellow' as const }, L)).toBeNull()                 // a sector: no warning
+    const glider = resolveAirspaceLevels({ gliding: 'info' })
+    expect(applyAirspaceLevel({ cls: 'GLDR', type: 'GLIDING', severity: 'yellow' as const }, glider)?.severity).toBe('blue')
   })
 
   it('gives entered / left notices for everything except sectors that are set to ignore', () => {
     const L = DEFAULT_AIRSPACE_LEVELS
-    expect(noticeWanted('GLDR', 'SOAR', L)).toBe(false)
-    expect(noticeWanted('GLDR', 'SOAR', resolveAirspaceLevels({ soaring: 'info' }))).toBe(true)
+    expect(noticeWanted('GLDR', 'GLIDING', L)).toBe(false)
+    expect(noticeWanted('GLDR', 'GLIDING', resolveAirspaceLevels({ gliding: 'info' }))).toBe(true)
     for (const [c, t] of [['GLDR', 'GLDR'], ['MODEL', 'MODEL'], ['C', 'CTR'], ['E', 'TMA'], ['R', 'R']]) expect(noticeWanted(c, t, L)).toBe(true)   // unchanged
   })
 })
@@ -53,9 +53,9 @@ describe('applyAirspaceLevel', () => {
 describe('resolveAirspaceLevels', () => {
   it('carries the old combined "activity" choice over to glider and model areas, not to the sectors', () => {
     const l = resolveAirspaceLevels({ activity: 'ignore' })
-    expect(l).toMatchObject({ glider: 'ignore', model: 'ignore', soaring: 'ignore', activity: 'ignore' })
+    expect(l).toMatchObject({ glider: 'ignore', model: 'ignore', gliding: 'ignore', activity: 'ignore' })
     const k = resolveAirspaceLevels({ activity: 'alert' })
-    expect(k).toMatchObject({ glider: 'alert', model: 'alert', soaring: 'ignore' })          // the sectors keep their own default
+    expect(k).toMatchObject({ glider: 'alert', model: 'alert', gliding: 'ignore' })          // the sectors keep their own default
     const own = resolveAirspaceLevels({ activity: 'alert', glider: 'info' })
     expect(own).toMatchObject({ glider: 'info', model: 'alert' })                           // an explicit new choice wins
   })
