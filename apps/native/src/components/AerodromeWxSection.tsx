@@ -239,7 +239,7 @@ export default function AerodromeWxSection({ icao, lat, lng, elevationFt, runway
                 </View>
 
                 <View style={wxStyles.tileGrid}>
-                  <WxTile label="Wind" value={fmtWind(effectiveWind)} tone={windTone(effectiveWind)} arrowDeg={windArrowDeg} />
+                  <WxTile wide label="Wind" value={fmtWind(effectiveWind)} tone={windTone(effectiveWind)} arrowDeg={windArrowDeg} />
                   <WxTile label="Visibility" value={fmtVis(metar.visM)} tone={visTone(metar.visM)} />
                   <WxTile label="Ceiling" value={metar.ceilingFt != null ? `${metar.ceilingFt.toLocaleString()} ft` : metar.clouds === 'CAVOK' ? 'CAVOK' : 'No ceiling'} tone={ceilingTone(metar.ceilingFt)} />
                   <WxTile label="QNH" value={metar.qnh ? metar.qnh.slice(1) : '—'} tone="info" />
@@ -322,7 +322,7 @@ export default function AerodromeWxSection({ icao, lat, lng, elevationFt, runway
                 </View>
 
                 <View style={wxStyles.tileGrid}>
-                  <WxTile label={`Wind${windIsModelled ? ' (modelled)' : ''}`} value={fmtWind(effectiveWind)} tone={windTone(effectiveWind)} arrowDeg={windArrowDeg} />
+                  <WxTile wide label={`Wind${windIsModelled ? ' (modelled)' : ''}`} value={fmtWind(effectiveWind)} tone={windTone(effectiveWind)} arrowDeg={windArrowDeg} />
                   {ambientWx.tempC != null && <WxTile label="Temp" value={`${ambientWx.tempC}°C`} tone="info" />}
                   {ambientWx.cloudPct != null && <WxTile label="Cloud cover" value={`${ambientWx.cloudPct}%`} tone="info" />}
                   {ambientWx.pressureHpa != null && <WxTile label="Surface pressure" value={`${ambientWx.pressureHpa} hPa`} tone="info" />}
@@ -386,20 +386,27 @@ function fmtGridDist(nm: number): string {
   return nm < 1 ? '<1 NM' : `${Math.round(nm)} NM`
 }
 
-function WxTile({ label, value, tone, arrowDeg }: { label: string; value: string; tone: keyof typeof TONE_BOX; arrowDeg?: number | null }) {
+/** A value this long (or a `wide` tile such as the wind: direction + speed + gusts) gets a double-width slot, so it never
+ *  has to break over two lines in a narrow box. */
+const LONG_TILE_VALUE = 11
+
+function WxTile({ label, value, tone, arrowDeg, wide }: { label: string; value: string; tone: keyof typeof TONE_BOX; arrowDeg?: number | null; wide?: boolean }) {
   const wxStyles = useThemedStyles(makeWxStyles)
   const t = TONE_BOX[tone]
   const color = theme[t.text]
   return (
-    <View style={[wxStyles.tile, { backgroundColor: theme[t.bg], borderColor: theme[t.border] }]}>
-      <Text style={[wxStyles.tileLabel, { color }]}>{label}</Text>
+    <View style={[wxStyles.tile, wide || value.length > LONG_TILE_VALUE ? wxStyles.tileWide : null, { backgroundColor: theme[t.bg], borderColor: theme[t.border] }]}>
+      {/* One line, never wrapped mid-word. Tiles are wide enough for the longest label (VISIBILITY) at the normal text size; at an
+          extreme size it ends in an ellipsis. No per-tile font shrinking: neighbouring tiles must keep the same label size. */}
+      <Text style={[wxStyles.tileLabel, { color }]} numberOfLines={1} ellipsizeMode="tail">{label}</Text>
       <View style={wxStyles.tileValueRow}>
         {arrowDeg != null && (
           <Svg viewBox="0 0 24 24" style={[wxStyles.tileArrow, { transform: [{ rotate: `${arrowDeg % 360}deg` }] }]}>
             <Path d="M12 2 L18 14 L12 10.5 L6 14 Z" fill={color} />
           </Svg>
         )}
-        <Text style={[wxStyles.tileValue, { color }, { flexShrink: 1 }]}>{value}</Text>
+        {/* One line, always: on a very narrow screen or a large font the value shrinks a little rather than breaking. */}
+        <Text style={[wxStyles.tileValue, { color }, { flexShrink: 1 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{value}</Text>
       </View>
     </View>
   )
@@ -534,14 +541,23 @@ function makeWxStyles(theme: ScaledTheme) {
     gap: 6,
     marginBottom: theme.space2,
   },
-  // 3 per row, equal width (web: auto-fit minmax(84px, 1fr)).
+  // Fill the row like web's auto-fit minmax(84px, 1fr) (84, like web: room for the longest label, VISIBILITY, with padding; at 320 dp three tiles fit with 12 dp to spare, and the wind's double slot of 180 keeps Wind + Visibility on the first row, with Ceiling / QNH / T-Td three-up below it): as many as fit (3 on a phone), growing to share the width. The old
+  // width: '32%' x 3 plus the gaps was slightly over 100%, so on a narrow screen the third tile always wrapped (2 per row, a gap
+  // on the right) and the values inside broke over two lines.
   tile: {
-    width: '32%',
+    flexGrow: 1,
+    flexBasis: 84,
+    minWidth: 84,
     gap: 2,
     borderWidth: 1,
     borderRadius: 6,
     paddingVertical: 6,
     paddingHorizontal: 8,
+  },
+  // The wind (and any long value): a double slot, so "160° 14 kt" or "270° 15G25 kt" stays on one line.
+  tileWide: {
+    flexGrow: 2,
+    flexBasis: 180,
   },
   tileLabel: {
     fontSize: theme.scale(9),

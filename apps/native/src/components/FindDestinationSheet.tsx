@@ -413,23 +413,23 @@ function makeStyles(theme: ScaledTheme) {
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   rowIcao: { fontSize: 13, fontWeight: '700', color: theme.accentBlue, minWidth: 44 },
   rowName: { fontSize: 12, color: theme.textSecondary, flex: 1 },
-  rowBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  rowTags: { flexDirection: 'row', gap: 4, flexWrap: 'wrap', flexShrink: 1 },
+  rowBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' },
+  rowTags: { flexDirection: 'row', gap: 4, flexWrap: 'wrap', flexShrink: 1, flexGrow: 1 },
   tag: {
     fontSize: 9, fontWeight: '700', color: theme.textMuted, backgroundColor: theme.surfaceHover,
-    borderWidth: 1, borderColor: theme.borderDefault, paddingHorizontal: 4, borderRadius: 3,
+    borderWidth: 1, borderColor: theme.borderDefault, paddingHorizontal: 4, borderRadius: 3, flexShrink: 0,
   },
   tagHome: {
     fontSize: 9, fontWeight: '700', color: '#facc15', backgroundColor: 'rgba(250,204,21,0.12)',
-    borderWidth: 1, borderColor: 'rgba(250,204,21,0.4)', paddingHorizontal: 4, borderRadius: 3,
+    borderWidth: 1, borderColor: 'rgba(250,204,21,0.4)', paddingHorizontal: 4, borderRadius: 3, flexShrink: 0,
   },
   tagGlide: {
     fontSize: 9, fontWeight: '700', color: '#4ade80', backgroundColor: 'rgba(74,222,128,0.12)',
-    borderWidth: 1, borderColor: 'rgba(74,222,128,0.4)', paddingHorizontal: 4, borderRadius: 3,
+    borderWidth: 1, borderColor: 'rgba(74,222,128,0.4)', paddingHorizontal: 4, borderRadius: 3, flexShrink: 0,
   },
   tagGrass: {
     fontSize: 9, fontWeight: '700', color: '#a3e635', backgroundColor: theme.surfaceHover,
-    borderWidth: 1, borderColor: theme.borderDefault, paddingHorizontal: 4, borderRadius: 3,
+    borderWidth: 1, borderColor: theme.borderDefault, paddingHorizontal: 4, borderRadius: 3, flexShrink: 0,
   },
   rowNav: { fontSize: 10, color: theme.textFaint, flexShrink: 0 },
   addBtn: {

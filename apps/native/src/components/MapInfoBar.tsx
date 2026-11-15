@@ -18,6 +18,9 @@ import { MAX_FT, ftToLabel } from './AltitudeSlider'
 const MAX_BAR_DP = 60
 const MIN_UPDATE_MS = 100
 
+/** The pill is a map HUD that must stay on one line: its text scales with the system font only up to this. */
+const PILL_MAX_FONT_SCALE = 1.2
+
 /** Gap between the pill and the map's bottom edge, dp. */
 export const MAP_INFO_BAR_BOTTOM_MARGIN = 8
 /** Height of the pill (one text row + padding) and the gap above it, dp. */
@@ -84,25 +87,27 @@ export const MapInfoBar = forwardRef<MapInfoBarHandle, Props>(function MapInfoBa
         accessibilityLabel="Map data & attribution"
         testID="map-info-button"
       >
-        <Text style={styles.infoText}>i</Text>
+        <Text style={styles.infoText} maxFontSizeMultiplier={PILL_MAX_FONT_SCALE}>i</Text>
       </TouchableOpacity>
-      <Text style={[styles.alt, !unlimited && styles.altFiltered]} testID="map-altitude-filter">{altLabel}</Text>
+      <Text style={[styles.alt, styles.noShrink, !unlimited && styles.altFiltered]} numberOfLines={1} maxFontSizeMultiplier={PILL_MAX_FONT_SCALE} testID="map-altitude-filter">{altLabel}</Text>
       {windLabel ? (
         <TouchableOpacity
           onPress={onToggleWindSurface}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={styles.windBtn}
           accessibilityRole="button"
           accessibilityLabel={windSurface ? 'Wind arrows show ground wind, tap to follow altitude' : 'Wind arrows follow altitude, tap to show ground wind'}
           testID="map-wind-altitude"
         >
-          <Text style={[styles.alt, windSurface && styles.altFiltered]}>{windLabel}</Text>
+          {/* The one item that may give way on a narrow screen: it shortens ("WIND 10,0…") instead of the pill breaking over two lines. */}
+          <Text style={[styles.alt, windSurface && styles.altFiltered]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={PILL_MAX_FONT_SCALE}>{windLabel}</Text>
         </TouchableOpacity>
       ) : null}
-      <View style={styles.scale} pointerEvents="none">
+      <View style={[styles.scale, styles.noShrink]} pointerEvents="none">
         <View style={[styles.scaleBar, { width: scale.barPx }]} />
-        <Text style={styles.scaleLabel}>{scale.label}</Text>
+        <Text style={styles.scaleLabel} maxFontSizeMultiplier={PILL_MAX_FONT_SCALE}>{scale.label}</Text>
       </View>
-      <Text style={styles.ratio} pointerEvents="none">{scale.ratio}</Text>
+      <Text style={[styles.ratio, styles.noShrink]} numberOfLines={1} maxFontSizeMultiplier={PILL_MAX_FONT_SCALE} pointerEvents="none">{scale.ratio}</Text>
     </View>
     </View>
   )
@@ -111,6 +116,8 @@ export const MapInfoBar = forwardRef<MapInfoBarHandle, Props>(function MapInfoBa
 const makeStyles = (t: ScaledTheme) => ({
   wrap: {
     position: 'absolute' as const,
+    // Both edges set: the (click-through) strip is as wide as the free screen, so the bar inside is limited to that width.
+    left: 8,
     right: 8,
     zIndex: 20,
     alignItems: 'flex-end' as const,
@@ -128,6 +135,8 @@ const makeStyles = (t: ScaledTheme) => ({
     borderWidth: 1,
     borderColor: t.borderStrong,
   },
+  noShrink: { flexShrink: 0 },
+  windBtn: { flexShrink: 1 },
   infoBtn: {
     width: 16, height: 16, borderRadius: 8,
     alignItems: 'center' as const, justifyContent: 'center' as const,
