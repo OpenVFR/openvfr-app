@@ -32,7 +32,8 @@ export type LayerState = {
   classCtma:  boolean   // TMA / CTA (other Class C polygons)
   classG:     boolean   // RMZ / ATZ
   restricted: boolean   // R + TRA
-  activity:   boolean   // Glider / Model (off by default)
+  glider:     boolean   // Glider areas and soaring sectors (off by default)
+  model:      boolean   // Model flying areas (off by default)
   // Point features
   aerodromes: boolean
   navaids:    boolean
@@ -76,7 +77,8 @@ export const LAYER_DEFAULTS: LayerState = {
   classCtma:  true,
   classG:     true,
   restricted: true,
-  activity:   false,
+  glider:     false,
+  model:      false,
   aerodromes: true,
   navaids:    true,
   waypoints:  true,
@@ -105,7 +107,8 @@ const AIRSPACE_GROUPS: Group[] = [
   { key: 'classCtma',  label: 'TMA / CTA',        color: AC.cTmaBorder  },
   { key: 'classG',     label: 'RMZ / ATZ / TMZ',        color: AC.gBorder     },
   { key: 'restricted', label: 'Restricted / Danger / TRA', color: AC.rBorder     },
-  { key: 'activity',   label: 'Glider / Model',    color: AC.gldrBorder  },
+  { key: 'glider',     label: 'Glider areas / sectors', color: AC.gldrBorder  },
+  { key: 'model',      label: 'Model flying areas',     color: AC.modelBorder },
   // FIR-wide regional NOTAM circles -- grouped with airspace filters (matches
   // web's map-style.ts LAYER_GROUPS placement), not with live traffic below.
   { key: 'notamCircles', label: 'Regional NOTAMs', color: '#e64980' },

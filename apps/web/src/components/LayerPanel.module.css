@@ -103,7 +103,8 @@
 .groupClassE    { --group-color: #16a34a; }  /* green   — Class E (ROENNE) */
 .groupClassG    { --group-color: #6b7280; }  /* grey    — Class G (RMZ/ATZ) */
 .groupRestricted { --group-color: #e67e22; } /* orange  — R / TRA */
-.groupActivity  { --group-color: #ca8a04; }  /* yellow  — Glider / Model */
+.groupGlider    { --group-color: #00a050; }  /* green   — glider areas / sectors */
+.groupModel     { --group-color: #c89600; }  /* yellow  — model flying areas */
 .groupNavaidsVOR { --group-color: #5c4ae4; } /* indigo  — VOR navaids */
 .groupNavaidsNDB { --group-color: #c05200; } /* brown   — NDB navaids */
 .groupAerodromeCircuits { --group-color: #38bdf8; } /* sky — traffic circuits (experimental) */

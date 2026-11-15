@@ -521,6 +521,12 @@ export function useLayerVisibility(): [Record<string, boolean>, (groupId: string
             stored.classCtma ??= stored.classC
             delete stored.classC
           }
+          // 'activity' was one toggle for glider + model areas; it is now two. Same carry-over.
+          if ('activity' in stored) {
+            stored.glider ??= stored.activity
+            stored.model ??= stored.activity
+            delete stored.activity
+          }
           setVisibilityState({ ...defaultLayerVisibility(), ...stored })
         } catch { /* ignore */ }
       }

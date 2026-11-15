@@ -245,6 +245,9 @@ export const PROTOMAPS_LAYER_IDS: readonly string[] = [
 // areas are drawn with the red restricted layers instead.
 const DANGER = ['all', ['==', ['get', 'class'], 'D'], ['==', ['get', 'type'], 'D']]
 const RED_STYLE = ['any', ['==', ['get', 'class'], 'R'], DANGER] as unknown as ExpressionSpecification
+// Glider areas (glider sites and the federation's soaring sectors) and model-flying areas: two layers, two switches.
+const GLIDER_FILTER = ['==', ['get', 'class'], 'GLDR'] as unknown as FilterSpecification
+const MODEL_FILTER = ['==', ['get', 'class'], 'MODEL'] as unknown as FilterSpecification
 const RESTRICTED_ONLY_FILTER = ['in', ['get', 'class'], ['literal', ['R', 'TRA']]] as unknown as FilterSpecification
 const DANGER_FILTER = DANGER as unknown as FilterSpecification
 const RESTRICTED_FILTER = ['any', ['in', ['get', 'class'], ['literal', ['R', 'TRA']]], DANGER] as unknown as FilterSpecification
@@ -310,6 +313,25 @@ function controlledLayers(k: CKind): StyleSpecification['layers'] {
   ] as StyleSpecification['layers']
 }
 
+/** The four layers (fill, inset band, border, label) of one activity class: `id` is the group (glider | model). */
+function activityLayers(id: string, cls: string, fill: string, border: string): StyleSpecification['layers'] {
+  const filter = ['==', ['get', 'class'], cls] as unknown as FilterSpecification
+  return [
+    { id: `airspace-fill-${id}`, type: 'fill', source: 'ofm', filter, layout: { visibility: 'none' },
+      paint: { 'fill-color': fill, 'fill-outline-color': AC.transparent } },
+    { id: `airspace-inset-${id}`, type: 'line', source: 'ofm', filter, layout: { visibility: 'none' },
+      paint: { 'line-color': border, 'line-width': 5, 'line-offset': 2.5, 'line-opacity': 0.16 } },
+    { id: `airspace-border-${id}`, type: 'line', source: 'ofm', filter, layout: { visibility: 'none' },
+      paint: { 'line-color': border, 'line-width': 1.0, 'line-dasharray': [3, 2] } },
+    { id: `airspace-label-${id}`, type: 'symbol', source: 'ofm', filter,
+      layout: {
+        visibility: 'none', 'symbol-placement': 'line', 'text-offset': [0, 1], 'text-field': AIRSPACE_LABEL_TEXT_FIELD, 'text-size': 9,
+        'text-justify': 'center', 'symbol-spacing': 200, 'text-font': ['Noto Sans Regular'],
+      },
+      paint: { 'text-color': border, 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 } },
+  ] as StyleSpecification['layers']
+}
+
 // Airspace border layers with default (vector) and boosted (satellite) line-widths.
 // In satellite mode widths are increased so class boundaries remain legible over imagery.
 export const AIRSPACE_BORDER_WIDTHS: { id: string; vector: number | ExpressionSpecification; sat: number }[] = [
@@ -318,7 +340,8 @@ export const AIRSPACE_BORDER_WIDTHS: { id: string; vector: number | ExpressionSp
   { id: 'airspace-border-g',          vector: 1.0,  sat: 1.5 },
   { id: 'airspace-border-restricted', vector: ['case', RED_STYLE, 1.8, 1.2], sat: 2.5 },
   { id: 'airspace-border-danger',     vector: 1.8,  sat: 2.5 },
-  { id: 'airspace-border-activity',   vector: 1.0,  sat: 1.5 },
+  { id: 'airspace-border-glider',     vector: 1.0,  sat: 1.5 },
+  { id: 'airspace-border-model',      vector: 1.0,  sat: 1.5 },
 ]
 
 // Aviation label layers whose text-halo is boosted for readability over satellite imagery.
@@ -341,7 +364,8 @@ export const AVIATION_LABEL_LAYERS = [
   'airspace-label-tma',
   'airspace-label-g',
   'airspace-label-restricted',
-  'airspace-label-activity',
+  'airspace-label-glider',
+  'airspace-label-model',
 ] as const
 
 // Runway wind-highlight defaults/builder now live in
@@ -383,10 +407,14 @@ export const AIRSPACE_BASE_FILTERS: Readonly<Record<string, FilterSpecification>
   'airspace-border-restricted': RESTRICTED_ONLY_FILTER,
   'airspace-border-danger':     DANGER_FILTER,
   'airspace-label-restricted':  RESTRICTED_FILTER,
-  'airspace-fill-activity':     ['in', ['get', 'class'], ['literal', ['GLDR', 'MODEL']]],
-  'airspace-inset-activity':    ['in', ['get', 'class'], ['literal', ['GLDR', 'MODEL']]],
-  'airspace-border-activity':   ['in', ['get', 'class'], ['literal', ['GLDR', 'MODEL']]],
-  'airspace-label-activity':    ['in', ['get', 'class'], ['literal', ['GLDR', 'MODEL']]],
+  'airspace-fill-glider': GLIDER_FILTER,
+  'airspace-inset-glider': GLIDER_FILTER,
+  'airspace-border-glider': GLIDER_FILTER,
+  'airspace-label-glider': GLIDER_FILTER,
+  'airspace-fill-model': MODEL_FILTER,
+  'airspace-inset-model': MODEL_FILTER,
+  'airspace-border-model': MODEL_FILTER,
+  'airspace-label-model': MODEL_FILTER,
 }
 
 // Default ceiling in feet. FL095 (9500 ft) sits below most CTA lower limits,
@@ -448,11 +476,20 @@ export const LAYER_GROUPS: LayerGroup[] = [
     section: 'Airspace',
   },
   {
-    id: 'activity',
-    // Activity areas: GLDR = Glider areas, MODEL = Model aircraft / UAS zones
-    label: 'Glider / Model Areas',
-    cssClass: 'groupActivity',
-    layerIds: ['airspace-fill-activity', 'airspace-inset-activity', 'airspace-border-activity', 'airspace-label-activity'],
+    id: 'glider',
+    // GLDR = glider sites (winch and field areas) and the soaring sectors a gliding federation agrees with the ATS
+    label: 'Glider areas / sectors',
+    cssClass: 'groupGlider',
+    layerIds: ['airspace-fill-glider', 'airspace-inset-glider', 'airspace-border-glider', 'airspace-label-glider'],
+    defaultOn: false,
+    section: 'Airspace',
+  },
+  {
+    id: 'model',
+    // MODEL = model aircraft / UAS flying areas
+    label: 'Model flying areas',
+    cssClass: 'groupModel',
+    layerIds: ['airspace-fill-model', 'airspace-inset-model', 'airspace-border-model', 'airspace-label-model'],
     defaultOn: false,
     section: 'Airspace',
   },
@@ -1369,84 +1406,9 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
         },
       },
 
-      // ── Layer 7: Activity areas (GLDR / MODEL) — default off ──────────────
-      {
-        id: 'airspace-fill-activity',
-        type: 'fill',
-        source: 'ofm',
-        filter: ['in', ['get', 'class'], ['literal', ['GLDR', 'MODEL']]],
-        layout: { visibility: 'none' },
-        paint: {
-          'fill-color': [
-            'match', ['get', 'class'],
-            'GLDR',  AC.gldrFill,
-            'MODEL', AC.modelFill,
-                     AC.transparent,
-          ],
-          'fill-outline-color': AC.transparent,
-        },
-      },
-      {
-        id: 'airspace-inset-activity',
-        type: 'line',
-        source: 'ofm',
-        filter: ['in', ['get', 'class'], ['literal', ['GLDR', 'MODEL']]],
-        layout: { visibility: 'none' },
-        paint: {
-          'line-color': [
-            'match', ['get', 'class'],
-            'GLDR',  AC.gldrBorder,
-            'MODEL', AC.modelBorder,
-                     AC.gBorder,
-          ],
-          'line-width': 5,
-          'line-offset': 2.5,
-          'line-opacity': 0.16,
-        },
-      },
-      {
-        id: 'airspace-border-activity',
-        type: 'line',
-        source: 'ofm',
-        filter: ['in', ['get', 'class'], ['literal', ['GLDR', 'MODEL']]],
-        layout: { visibility: 'none' },
-        paint: {
-          'line-color': [
-            'match', ['get', 'class'],
-            'GLDR',  AC.gldrBorder,
-            'MODEL', AC.modelBorder,
-                     AC.gBorder,
-          ],
-          'line-width': 1.0,
-          'line-dasharray': [3, 2],
-        },
-      },
-      {
-        id: 'airspace-label-activity',
-        type: 'symbol',
-        source: 'ofm',
-        filter: ['in', ['get', 'class'], ['literal', ['GLDR', 'MODEL']]],
-        layout: {
-          visibility: 'none',
-          'symbol-placement': 'line',
-          'text-offset': [0, 1],
-          'text-field': AIRSPACE_LABEL_TEXT_FIELD,
-          'text-size': 9,
-          'text-justify': 'center',
-          'symbol-spacing': 200,
-          'text-font': ['Noto Sans Regular'],
-        },
-        paint: {
-          'text-color': [
-            'match', ['get', 'class'],
-            'GLDR',  AC.gldrBorder,
-            'MODEL', AC.modelBorder,
-                     AC.gBorder,
-          ],
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1.2,
-        },
-      },
+      // ── Layer 7: Glider areas (GLDR) and model flying areas (MODEL), one switch each — default off ──────────
+      ...activityLayers('glider', 'GLDR', AC.gldrFill, AC.gldrBorder),
+      ...activityLayers('model', 'MODEL', AC.modelFill, AC.modelBorder),
 
       // ── Layer 8: VOR navaids ─────────────────────────────────────────────
       // VOR symbol layer — canvas-drawn hexagon compass-rose (nav-vor).

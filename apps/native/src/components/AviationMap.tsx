@@ -132,7 +132,8 @@ export type AviationMapProps = {
   showClassCtma?:  boolean
   showClassG?:     boolean
   showRestricted?: boolean
-  showActivity?:   boolean
+  showGlider?:     boolean
+  showModel?:      boolean
   showAerodromes?: boolean
   showNavaids?:    boolean
   showWaypoints?:  boolean
@@ -1177,7 +1178,8 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
   runwayThresholdsData,
   runwayWindExpr,
   runwaysData,
-  showActivity,
+  showGlider,
+  showModel,
   showAerodromes,
   showClassCtma,
   showClassCtr,
@@ -1248,8 +1250,8 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
     { k: 'r',     f: subClass(filterRestricted, 'R'),                   col: AC.rBorder,     show: showRestricted, p: AS_PARAMS.r },
     { k: 'dng',   f: mkFilter(isDanger),                                col: AC.rBorder,     show: showRestricted, p: AS_PARAMS.dng },
     { k: 'tra',   f: subClass(filterRestricted, 'TRA'),                 col: AC.traBorder,   show: showRestricted, p: AS_PARAMS.r },
-    { k: 'gldr',  f: subClass(filterActivity, 'GLDR'),                  col: AC.gldrBorder,  show: showActivity,   p: AS_PARAMS.act },
-    { k: 'model', f: subClass(filterActivity, 'MODEL'),                 col: AC.modelBorder, show: showActivity,   p: AS_PARAMS.act },
+    { k: 'gldr',  f: subClass(filterActivity, 'GLDR'),                  col: AC.gldrBorder,  show: showGlider,     p: AS_PARAMS.act },
+    { k: 'model', f: subClass(filterActivity, 'MODEL'),                 col: AC.modelBorder, show: showModel,      p: AS_PARAMS.act },
   ]
 
   return (
@@ -1529,8 +1531,8 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
           ))}
           <Layer id="as-fill-r" type="fill" filter={filterRed as any} paint={{ 'fill-color': AC.rFill, 'fill-opacity': 1 }} layout={{ visibility: showRestricted ? 'visible' : 'none' }} />
           <Layer id="as-fill-tra" type="fill" filter={['all', filterRestricted, ['==', ['get', 'class'], 'TRA']] as any} paint={{ 'fill-color': AC.traFill, 'fill-opacity': 1 }} layout={{ visibility: showRestricted ? 'visible' : 'none' }} />
-          <Layer id="as-fill-gldr" type="fill" filter={['all', filterActivity, ['==', ['get', 'class'], 'GLDR']] as any} paint={{ 'fill-color': AC.gldrFill, 'fill-opacity': 1 }} layout={{ visibility: showActivity ? 'visible' : 'none' }} />
-          <Layer id="as-fill-model" type="fill" filter={['all', filterActivity, ['==', ['get', 'class'], 'MODEL']] as any} paint={{ 'fill-color': AC.modelFill, 'fill-opacity': 1 }} layout={{ visibility: showActivity ? 'visible' : 'none' }} />
+          <Layer id="as-fill-gldr" type="fill" filter={['all', filterActivity, ['==', ['get', 'class'], 'GLDR']] as any} paint={{ 'fill-color': AC.gldrFill, 'fill-opacity': 1 }} layout={{ visibility: showGlider ? 'visible' : 'none' }} />
+          <Layer id="as-fill-model" type="fill" filter={['all', filterActivity, ['==', ['get', 'class'], 'MODEL']] as any} paint={{ 'fill-color': AC.modelFill, 'fill-opacity': 1 }} layout={{ visibility: showModel ? 'visible' : 'none' }} />
           {/* Inset shading bands — wide translucent line offset INTO the polygon
               interior via positive line-offset. Source geometry is Polygon, so
               MapLibre's polygon-aware line-offset inset/outset is winding-order
@@ -1983,7 +1985,8 @@ export const AviationMap = React.memo(function AviationMap({
   showClassCtma  = true,
   showClassG     = true,
   showRestricted = true,
-  showActivity   = false,
+  showGlider     = false,
+  showModel      = false,
   showAerodromes = true,
   showNavaids    = true,
   showWaypoints  = true,
@@ -3560,7 +3563,8 @@ export const AviationMap = React.memo(function AviationMap({
           runwayThresholdsData={runwayThresholdsData}
           runwayWindExpr={runwayWindExpr}
           runwaysData={runwaysData}
-          showActivity={showActivity}
+          showGlider={showGlider}
+          showModel={showModel}
           showAerodromes={showAerodromes}
           showClassCtma={showClassCtma}
           showClassCtr={showClassCtr}

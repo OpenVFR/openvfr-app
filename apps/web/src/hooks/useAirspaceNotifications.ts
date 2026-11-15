@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { AlertPosition } from './useAirspaceWarnings'
+import { DEFAULT_AIRSPACE_LEVELS, noticeWanted, type AirspaceAlertLevels } from '@open-vfr/shared/airspaceAlertLevel'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { airspaceEnded } from '@open-vfr/shared/airspaceInForce'
 import { useActiveCountries } from '../utils/countryData'
@@ -93,7 +94,7 @@ type AirspaceFeature = {
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
-export function useAirspaceNotifications(position: AlertPosition | null): {
+export function useAirspaceNotifications(position: AlertPosition | null, airspaceLevels: AirspaceAlertLevels = DEFAULT_AIRSPACE_LEVELS): {
   notifications: AirspaceNotification[]
   clearAll:      () => void
 } {
@@ -167,6 +168,7 @@ export function useAirspaceNotifications(position: AlertPosition | null): {
     // floor/ceiling does not flap entered/left).
     const current = new Set<string>()
     for (const f of features) {
+      if (!noticeWanted(f.cls, f.type, airspaceLevels)) continue
       const lo = effectiveLimitFt(f.lower, f.lower_ft, terrainFt), hi = effectiveLimitFt(f.upper, f.upper_ft, terrainFt)
       if (!insideBand(altitudeForLimit(f.lower, ownAlt), altitudeForLimit(f.upper, ownAlt), lo, hi, prev.has(f.key))) continue
       if (pointInPolygon(lat, lng, f.geometry)) current.add(f.key)

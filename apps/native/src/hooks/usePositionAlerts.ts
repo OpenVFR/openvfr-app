@@ -42,7 +42,7 @@ import { filterDismissed } from '@open-vfr/shared/alertDismiss'
 import { airspaceEnded } from '@open-vfr/shared/airspaceInForce'
 import { updateClimbRate, type ClimbState } from '@open-vfr/shared/climbRate'
 import { onPlannedCourse } from '@open-vfr/shared/plannedCourse'
-import { applyAirspaceLevel, DEFAULT_AIRSPACE_LEVELS, type AirspaceAlertLevels } from '@open-vfr/shared/airspaceAlertLevel'
+import { applyAirspaceLevel, DEFAULT_AIRSPACE_LEVELS, noticeWanted, type AirspaceAlertLevels } from '@open-vfr/shared/airspaceAlertLevel'
 import { useMefGrids } from './useMefGrids'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
@@ -393,6 +393,7 @@ export function usePositionAlerts(
       const prevInside = insideRef.current
       const current = new Set<string>()
       for (const f of airspaceFeatures) {
+        if (!noticeWanted(f.cls, f.type, airspaceLevels)) continue
         if (!insideBand(loAlt(f), hiAlt(f), loLim(f), hiLim(f), prevInside.has(f.key))) continue
         if (pointInPolygon(lat, lng, f.geometry)) current.add(f.key)
       }

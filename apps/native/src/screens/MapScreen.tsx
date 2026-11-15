@@ -329,11 +329,14 @@ function MapScreenForCountry() {
         // 'classC' was one toggle for CTR + TMA; it is now two. Carry the old
         // choice over so nobody's layers change on upgrade.
         const legacy = (stored as { classC?: boolean }).classC
-        const { classC: _drop, ...rest } = stored as Partial<LayerState> & { classC?: boolean }
-        void _drop
+        // 'activity' was one toggle for glider + model areas; it is now two.
+        const legacyActivity = (stored as { activity?: boolean }).activity
+        const { classC: _drop, activity: _drop2, ...rest } = stored as Partial<LayerState> & { classC?: boolean; activity?: boolean }
+        void _drop; void _drop2
         setLayers(l => ({
           ...l,
           ...(legacy !== undefined ? { classCtr: legacy, classCtma: legacy } : {}),
+          ...(legacyActivity !== undefined ? { glider: legacyActivity, model: legacyActivity } : {}),
           ...rest,
         }))
       }
@@ -1869,7 +1872,8 @@ function MapScreenForCountry() {
           showClassCtma={layers.classCtma}
           showClassG={layers.classG}
           showRestricted={layers.restricted}
-          showActivity={layers.activity}
+          showGlider={layers.glider}
+          showModel={layers.model}
           showAerodromes={layers.aerodromes}
           showNavaids={layers.navaids}
           showWaypoints={layers.waypoints}

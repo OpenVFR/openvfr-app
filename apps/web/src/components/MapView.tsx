@@ -282,7 +282,8 @@ const AIRSPACE_FILL_LAYERS = [
   'airspace-fill-tma',
   'airspace-fill-g',
   'airspace-fill-restricted',
-  'airspace-fill-activity',
+  'airspace-fill-glider',
+  'airspace-fill-model',
 ]
 
 // Airspace edge layers (inset band, border, boundary label) -- a click
@@ -1292,7 +1293,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     [flyingPosition, terrainFt],
   )
   const { alerts: airspaceAlerts,     dismiss: dismissAlert }       = useAirspaceWarnings(alertPosition, airspaceWarnLookahead, airspaceWarnVerticalFt, alertBanners.suppressOnCourse, routeWaypoints, alertBanners.airspaceLevels)
-  const { notifications: airspaceNotifications }                     = useAirspaceNotifications(alertPosition)
+  const { notifications: airspaceNotifications }                     = useAirspaceNotifications(alertPosition, alertBanners.airspaceLevels)
   const { alerts: obstructionAlerts,  dismiss: dismissObstruction } = useObstructionWarnings(flyingMode !== 'off' ? gpsPosition : null)
   const { alerts: airfieldAlerts,     dismiss: dismissAirfield }    = useAirfieldProximity(flyingMode !== 'off' ? gpsPosition : null, routeWaypoints)
   const airfieldBrief = useAirfieldBrief(flyingMode !== 'off' ? gpsPosition : null, routeWaypoints, activeWpIdx)
