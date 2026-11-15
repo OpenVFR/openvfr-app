@@ -834,6 +834,7 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
         attribution:
           '© <a href="https://www.openaip.net">openAIP</a> (CC BY-NC 4.0)' +
           ' · <a href="https://vbk.lansstyrelsen.se/">Länsstyrelserna</a> (Vindbrukskollen, CC0)' +
+          ' · <a href="https://ens.dk/analyser-og-statistik/data-oversigt-over-energisektoren">Energistyrelsen</a> (Stamdataregister)' +
           ' · <a href="https://www.lfv.se">LFV</a> (CC BY 4.0)',
       },
 

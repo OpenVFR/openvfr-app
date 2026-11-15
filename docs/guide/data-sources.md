@@ -14,7 +14,7 @@ information dialog shows the same list.
 | On the map | Source |
 | --- | --- |
 | Airspace, aerodromes, navaids, waypoints, runways | OpenFlightMaps; OpenAIP fills gaps in airspace and aerodromes |
-| Obstacles (towers, chimneys, wind turbines) | OpenAIP; in Sweden also LFV and Vindbrukskollen |
+| Obstacles (towers, chimneys, wind turbines) | OpenAIP; in Sweden also LFV and Vindbrukskollen; in Denmark also Energistyrelsen's wind turbine register |
 | Base map, landmarks, water | OpenStreetMap, rendered from Protomaps tiles |
 | Hillshade, contour lines, offline terrain | Copernicus DEM GLO-30 |
 | Terrain along the route (profile, MSA) | EU-DEM via OpenTopoData |
