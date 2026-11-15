@@ -1,0 +1,5 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": { "modules": ["OpenVfrPdfModule"] },
+  "android": { "modules": ["expo.modules.openvfrpdf.OpenVfrPdfModule"] }
+}

@@ -73,6 +73,10 @@ import { useWindGrid } from '../hooks/useWindGrid'
 import { useResilientTileData, isRemote } from '../hooks/useResilientTileData'
 import { useTileDataTick } from '../utils/tileDerived'
 import { parseAerodromeDetails } from '@open-vfr/shared/aerodromeDetails'
+import { ChartOverlayLayer } from './ChartOverlay'
+import { overlayGeometry } from '@open-vfr/shared/chartsIndex'
+import { cornersBounds } from '@open-vfr/shared/chartDocument'
+import { getChartUiState, useChartFitToken } from '../utils/charts'
 import { buildDetailsMapData, staticColorLayers, layerFilter } from '@open-vfr/shared/aerodromeDetailsStyle'
 import { useCircuitFocus } from '../utils/circuitFocus'
 import { LogManager } from '@maplibre/maplibre-react-native'
@@ -1510,6 +1514,9 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
         </VectorSource>
         )}
 
+        {/* A georeferenced official chart (experimental): below the airspace so aviation data stays readable on top. */}
+        <ChartOverlayLayer />
+
         {/* ── Airspace ──────────────────────────────────── */}
         {/* Always-mounted — visibility toggled via layout.visibility, not mount/unmount.
             MapLibre Native throws 'id cannot be changed' when same id is removed then re-added. */}
@@ -2062,6 +2069,14 @@ export const AviationMap = React.memo(function AviationMap({
   flyToTarget,
 }: AviationMapProps) {
   const cameraRef   = useRef<CameraRef>(null)
+  // A chart was just put on the map (Charts section, "Map"): frame it.
+  const chartFitToken = useChartFitToken()
+  useEffect(() => {
+    const g = getChartUiState().overlay?.chart.georef
+    if (!chartFitToken || !g) return
+    const { sw, ne } = cornersBounds(overlayGeometry(g).corners)
+    cameraRef.current?.fitBounds([sw[0], sw[1], ne[0], ne[1]], { padding: { top: 80, bottom: 140, left: 40, right: 40 }, duration: 800 })
+  }, [chartFitToken])
   const notamPointsSourceRef = useRef<GeoJSONSourceRef>(null)
   // Resolved once per mount (cheap sync fs `.exists` checks) — uses cached local
   // files when the pilot has downloaded offline data via Settings, else remote.

@@ -162,6 +162,7 @@
     "./countries": "./src/countries.ts",
     "./countryData": "./src/countryData.ts",
     "./chartsIndex": "./src/chartsIndex.ts",
+    "./chartDocument": "./src/chartDocument.ts",
     "./aerodromeDetails": "./src/aerodromeDetails.ts",
     "./aerodromeDetailsStyle": "./src/aerodromeDetailsStyle.ts",
     "./notamTextGeometry": "./src/notamTextGeometry.ts",

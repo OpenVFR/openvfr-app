@@ -23,6 +23,8 @@ import { windOverlayAltitude } from '@open-vfr/shared/windGrid'
 import type { LayerState }   from '../components/MapDisplaySheet'
 
 import { AerodromePopup }    from '../components/AerodromePopup'
+import ChartViewer           from '../components/ChartViewer'
+import { ChartOverlayBar }   from '../components/ChartOverlay'
 import type { AerodromeFeatureProps } from '../components/AerodromePopup'
 import type { RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import { AirspacePopup }     from '../components/AirspacePopup'
@@ -2494,6 +2496,8 @@ function MapScreenForCountry() {
             : { short: 'Route', label: 'Start a route here', icon: 'add' as const, onPress: () => { addWaypoint(wp); setExtending(true) } }
         })()}
       />
+      <ChartOverlayBar />
+      <ChartViewer />
       <AirspacePopup
         features={airspaceFeatures}
         regionalNotams={regionalNotamHits}

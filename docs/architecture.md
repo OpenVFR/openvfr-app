@@ -350,7 +350,24 @@ a MapLibre `canvas` source at `crop_corners`, below the airspace layers, with
 an opacity slider. A canvas source needs no network fetch, so it works under
 the CSP (`connect-src` doesn't list `blob:`/`data:`). pdf.js is loaded on
 first use only. Documents are always the publisher's own, never altered or
-stored server-side beyond a short in-memory cache.
+stored server-side: the endpoint streams them through (a few chunks in memory at most).
+
+**Native (Android; iOS written, not compiled):** the same `ChartsSection` in the aerodrome sheet, an in-app viewer
+(`ChartViewer`, 1x/2x/3x, pages) and the map overlay (`ChartOverlayLayer` + `ChartOverlayBar`: an `ImageSource` at
+`crop_corners`, a raster layer below the airspace, opacity slider). Differences from web, all deliberate:
+- **Public index only.** Native reads `<cc>-charts.public.json` (released airfields) and never a preview file: there is no
+  "include unreviewed" on native, and nothing in `apps/native` references a `*Preview` dataset (`charts.test.ts` checks the
+  request). An unreleased airfield shows no Charts section.
+- **No API in the path.** The device downloads the publisher's PDF itself (no CORS on a device), straight to a file in the cache,
+  so the api holds no document. The URL comes from the index and must pass `checkChartDocumentUrl` (`@open-vfr/shared/chartDocument`:
+  https, no credentials or port, `.pdf`; the host check is a sanity check only, there is no allow-list on a device), the file must be
+  a PDF within 25 MB and, when the index lists `bytes`, exactly that size. At most 8 documents are kept (least recently used go).
+- **Drawing pages** is `apps/native/modules/openvfr-pdf` (Android `PdfRenderer`, iOS PDFKit), a local Expo module. It is optional at
+  runtime (`requireOptionalNativeModule`): a dev client built before it existed lists the charts and opens each at the publisher.
+  Adding or changing it needs a new native build (`pnpm build:android:device`), not just Metro.
+- Whether charts are offered at all follows the api's `GET /api/charts/config` (`adminOnly`), like web; native has no admin concept,
+  so a deployment that refuses non-admins shows no charts on native.
+- Not done on native: offline charts (the cache is only a convenience; a chart needs the network the first time) and the iOS build.
 
 **Editions:** `id` changes with every new edition of a chart, `key` stays.
 `effective`, `sha256` and `bytes` describe the edition, so an offline copy

@@ -283,6 +283,8 @@ The MCP endpoint (`apps/api/src/mcp.ts`, auth in `assistantAuth.ts`) is called b
 
 ---
 
+**Native charts (`apps/native/src/utils/charts.ts`, `components/Chart*.tsx`, module `apps/native/modules/openvfr-pdf`): public index only, no preview, no API.** Native reads `<cc>-charts.public.json` and never a `*Preview` file (an unreleased airfield must show no charts on a phone; `charts.test.ts` fails if a preview file is requested). The device downloads the publisher's PDF itself and a local Expo module draws pages (Android `PdfRenderer`; the iOS PDFKit side is written but has never been compiled). Three things bit during the first device run: (1) `ImageSource` freezes its `id` and throws "`id` cannot be changed" if it changes while mounted, so each drawing gets a new `key` AND a new id (`ChartOverlayLayer`); (2) the module is optional at runtime and a build without it must keep listing charts (they then open at the publisher), but adding or changing it needs a native rebuild, Metro alone is not enough; (3) the overlay bar must sit above the map info pill (`MAP_INFO_BAR_*` in `MapInfoBar.tsx`). The api's `/api/charts/document` streams (it never holds a document), which is why a device that fetches directly costs the api nothing.
+
 ## Licensing
 
 Dependency licensing rules: [`OSS-POLICY.md`](OSS-POLICY.md).

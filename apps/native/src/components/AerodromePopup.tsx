@@ -32,6 +32,7 @@ import AerodromeWxSection from './AerodromeWxSection'
 import AerodromeNotamSection, { useNotamLists } from './AerodromeNotamSection'
 import { NativeSheet } from './NativeSheet'
 import LocalInfoSection from './LocalInfoSection'
+import ChartsSection from './ChartsSection'
 import type { LocalInfo } from '@open-vfr/shared/aerodromeDetails'
 import { setCircuitFocus, useCircuitFocus } from '../utils/circuitFocus'
 import { CIRCUIT_FOCUS_COLOR } from '@open-vfr/shared/featureColors'
@@ -392,7 +393,7 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
                     const windEnds = r.thresholds ? computeRunwayWind(r.thresholds, effectiveWind) : []
                     const hasWind = windEnds.some((e) => e.headwindKt != null)
                     return (
-                      <View key={i} style={{ marginBottom: scaledTheme.space1 }}>
+                      <View key={i} style={{ marginBottom: scaledTheme.space2 }}>
                         {windEnds.length > 0 ? (
                           <View style={runwayStyles.desigRow}>
                             {windEnds.map((e, j) => (
@@ -427,7 +428,8 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
                         {hasWind && (
                           <View style={runwayStyles.windRow}>
                             {windEnds.map((e) => e.headwindKt != null && (
-                              <Text key={e.designator} style={[runwayStyles.windTxt, { color: xwindColor(e.crosswindSeverity) }]}>
+                              <Text key={e.designator} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}
+                                style={[runwayStyles.windTxt, { color: xwindColor(e.crosswindSeverity) }]}>
                                 {e.designator}: {e.headwindKt >= 0 ? `${e.headwindKt}kt HW` : `${-e.headwindKt}kt TW`} · {e.crosswindKt}kt XW
                               </Text>
                             ))}
@@ -449,6 +451,8 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
               )}
 
               <LocalInfoSection info={feature?.local} />
+
+              <ChartsSection icao={feature?.icao} onShowOnMap={onClose} />
 
               {hours.length > 0 && (
                 <Section title="Hours of Operation">
@@ -509,7 +513,7 @@ function TabBtn({ label, active, onPress, dotColor, count }: {
     <TouchableOpacity style={[tabStyles.tab, active ? tabStyles.tabActive : null]} onPress={onPress}>
       <View style={tabStyles.tabInner}>
         {dotColor && <View style={[tabStyles.dot, { backgroundColor: dotColor }]} />}
-        <Text style={[tabStyles.tabTxt, active ? tabStyles.tabTxtActive : null]}>{label}</Text>
+        <Text style={[tabStyles.tabTxt, active ? tabStyles.tabTxtActive : null]} numberOfLines={1}>{label}</Text>
         {count != null && (
           <View style={tabStyles.count}>
             <Text style={tabStyles.countTxt}>{count}</Text>
@@ -706,6 +710,8 @@ function makeTabStyles(theme: ScaledTheme) {
  return {
   tab: {
     flex: 1,
+    minWidth: 0,            // a slot never grows with its content: a long label or the count badge must shrink, not spill
+    paddingHorizontal: 2,
     paddingVertical: theme.space2,
     alignItems: 'center',
     borderBottomWidth: 2,
@@ -718,6 +724,7 @@ function makeTabStyles(theme: ScaledTheme) {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    maxWidth: '100%',
   },
   dot: {
     width: 8,
@@ -728,6 +735,7 @@ function makeTabStyles(theme: ScaledTheme) {
     color:    theme.textSecondary,
     fontSize: theme.textSm,
     fontWeight: '700',
+    flexShrink: 1,
   },
   tabTxtActive: {
     color: theme.textPrimary,
@@ -738,6 +746,7 @@ function makeTabStyles(theme: ScaledTheme) {
     paddingHorizontal: 6,
     minWidth: 18,
     alignItems: 'center',
+    flexShrink: 0,
   },
   countTxt: {
     color: theme.textPrimary,
@@ -779,14 +788,17 @@ function makeRunwayStyles(theme: ScaledTheme) {
     color:    theme.textSecondary,
     fontSize: theme.textSm,
     marginLeft: theme.space2,
+    flexShrink: 1,
   },
+  // The two ends of a runway are two equal columns on ONE line. Each end's text stays whole (it shrinks a little on a narrow
+  // screen or a large UI scale, never breaks mid-item), so the row looks the same for every runway.
   windRow: {
     flexDirection: 'row',
-    flexWrap:      'wrap',
-    gap:           10,
+    columnGap:     10,
     marginTop:     3,
   },
   windTxt: {
+    flex: 1,
     fontSize: theme.textXs,
     fontWeight: '600',
   },
