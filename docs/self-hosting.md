@@ -278,7 +278,7 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   docs/architecture.md "Charts index"). Empty, or `TILES_BASE_URL` unset =
   endpoint disabled. Limits: `CHART_DOCUMENT_MAX_MB` (20),
   `CHART_DOCUMENT_HOURLY_LIMIT` (120) / `CHART_DOCUMENT_DAILY_LIMIT` (600)
-  per user, `CHART_DOCUMENT_CACHE_MB` (100, shared in-memory). The web
+  per user. Documents are streamed through, never held or cached in the api (the old `CHART_DOCUMENT_CACHE_MB` is ignored). The web
   client shows the charts of the public index to every user and those of the preview index (airfields not released) to
   accounts with role `admin` who switch on "Include unreviewed" (there is no build flag); the endpoint enforces the same split
   (a chart only in the preview index: 404 unless the account is an admin). `CHART_DOCUMENT_ADMIN_ONLY=1` makes the endpoint

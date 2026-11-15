@@ -19,7 +19,9 @@
  *
  * What it is not: a general proxy or a mirror. The document is passed
  * through byte for byte from the publisher, only for hosts the operator has
- * explicitly allowed, and the response is never altered.
+ * explicitly allowed, and the response is never altered. It is STREAMED: the api never holds a document (a few chunks at most), so
+ * a 20 MB chart costs the small container no memory; the size cap is enforced on the Content-Length and again while streaming,
+ * and the first bytes must be %PDF- before anything is sent.
  *
  * Security (AGENTS.md "Server API Security Baseline"):
  *   - auth: session required (401) -- it spends this server's bandwidth
@@ -43,7 +45,7 @@
  *   CHART_DOCUMENT_MAX_MB        per-document cap (default 20)
  *   CHART_DOCUMENT_HOURLY_LIMIT  per user (default 120)
  *   CHART_DOCUMENT_DAILY_LIMIT   per user (default 600)
- *   CHART_DOCUMENT_CACHE_MB      shared in-memory cache, 0 = off (default 100)
+ *   CHART_DOCUMENT_CACHE_MB      no longer used: documents are streamed through, never held in memory or cached here
  *   CHART_DOCUMENT_ADMIN_ONLY    1/true: only accounts with role 'admin' may fetch documents at all (403 for others). Off by
  *                                default: every signed-in user may fetch the documents of the charts in the PUBLIC index
  *                                (`<cc>-charts.public.json`, released airfields); a chart that is only in the preview index
@@ -65,20 +67,12 @@ export interface ChartDocumentConfig {
   maxBytes: number
   hourlyLimit: number
   dailyLimit: number
-  cacheBytes: number
-  cacheTtlMs: number
   timeoutMs: number
   /** Only role 'admin' may fetch documents. Optional: absent = open to every signed-in user. */
   adminOnly?: boolean
 }
 
 export function chartDocumentConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ChartDocumentConfig {
-  // An empty or invalid value means the default (Number('') is 0, which would refuse everything). Only the cache size may be 0 (= off).
-  const cacheMb = (() => {
-    const raw = env['CHART_DOCUMENT_CACHE_MB']?.trim()
-    const v = raw ? Number(raw) : NaN
-    return Number.isFinite(v) && v >= 0 ? v : 100
-  })()
   return {
     hosts: new Set((env['CHART_DOCUMENT_HOSTS'] ?? '').split(',').map(h => h.trim().toLowerCase()).filter(Boolean)),
     tilesBaseUrl: (env['TILES_BASE_URL'] ?? '').trim().replace(/\/+$/, ''),
@@ -86,8 +80,6 @@ export function chartDocumentConfigFromEnv(env: NodeJS.ProcessEnv = process.env)
     maxBytes: limitFromEnv('CHART_DOCUMENT_MAX_MB', 20, env) * 1024 * 1024,
     hourlyLimit: limitFromEnv('CHART_DOCUMENT_HOURLY_LIMIT', 120, env),
     dailyLimit: limitFromEnv('CHART_DOCUMENT_DAILY_LIMIT', 600, env),
-    cacheBytes: cacheMb * 1024 * 1024,
-    cacheTtlMs: 6 * 60 * 60 * 1000,
     timeoutMs: 30_000,
     adminOnly: /^(1|true)$/i.test((env['CHART_DOCUMENT_ADMIN_ONLY'] ?? '').trim()),
   }
@@ -124,35 +116,6 @@ export function createRateLimiter(hourly: number, daily: number, now: () => numb
   }
 }
 
-/** Small LRU byte cache shared by all users (the documents are public). */
-export function createByteCache(maxBytes: number, ttlMs: number, now: () => number = Date.now) {
-  const entries = new Map<string, { body: Uint8Array; at: number }>()
-  let total = 0
-  return {
-    get(key: string): Uint8Array | null {
-      const e = entries.get(key)
-      if (!e) return null
-      if (now() - e.at > ttlMs) { entries.delete(key); total -= e.body.byteLength; return null }
-      entries.delete(key)
-      entries.set(key, e) // most recently used last
-      return e.body
-    },
-    set(key: string, body: Uint8Array): void {
-      if (maxBytes <= 0 || body.byteLength > maxBytes / 4) return
-      const old = entries.get(key)
-      if (old) { entries.delete(key); total -= old.body.byteLength }
-      entries.set(key, { body, at: now() })
-      total += body.byteLength
-      for (const [k, e] of entries) {
-        if (total <= maxBytes) break
-        entries.delete(k)
-        total -= e.body.byteLength
-      }
-    },
-    get size() { return total },
-  }
-}
-
 class UpstreamError extends Error {
   constructor(message: string, readonly status: number) { super(message) }
 }
@@ -160,33 +123,109 @@ class UpstreamError extends Error {
 const upstreamError = (message: string, status: number) => new UpstreamError(message, status)
 const readCappedUpstream = (res: Response, maxBytes: number) => readCapped(res, maxBytes, upstreamError)
 
-/** Fetch with at most one redirect, and only to another allowed URL. */
-export async function fetchDocument(url: URL, cfg: ChartDocumentConfig, fetchImpl: typeof fetch = fetch): Promise<Uint8Array> {
-  let current = url
-  for (let hop = 0; hop < 2; hop++) {
-    const res = await fetchImpl(current, {
-      redirect: 'manual',
-      signal: AbortSignal.timeout(cfg.timeoutMs),
-      headers: { 'User-Agent': 'OpenVFR chart document pass-through', 'Accept': 'application/pdf' },
-    })
-    if (res.status >= 300 && res.status < 400) {
-      const loc = res.headers.get('location')
-      const next = loc ? checkDocumentUrl(new URL(loc, current).toString(), cfg.hosts) : { error: 'no location' }
-      await res.body?.cancel().catch(() => undefined)             // an unread body keeps the connection busy
-      if ('error' in next) throw new UpstreamError(`redirect refused: ${next.error} (${loc})`, 502)
-      current = next.url
-      continue
+export interface OpenedDocument {
+  /** The publisher's bytes, validated at the start; errors the stream (the client sees a broken download) if the cap is passed. */
+  body: ReadableStream<Uint8Array>
+  /** The publisher's Content-Length when it sent one (already checked against the cap). */
+  length: number | null
+}
+
+const PDF_MAGIC = '%PDF-'
+
+/**
+ * Open a document for streaming: at most one redirect, and only to another allowed URL; the status, the declared size and the first
+ * bytes (%PDF-) are checked BEFORE anything is returned, so a bad document is still a clean error response. After that the bytes
+ * flow chunk by chunk with the cap enforced as they pass, and a stalled publisher is cut off after `timeoutMs` without data
+ * (the timeout covers the wait for the first bytes and then each gap, not the whole transfer to a slow client).
+ */
+export async function openDocument(url: URL, cfg: ChartDocumentConfig, fetchImpl: typeof fetch = fetch): Promise<OpenedDocument> {
+  const ctrl = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const arm = () => { clearTimeout(timer); timer = setTimeout(() => ctrl.abort(), cfg.timeoutMs) }
+  const disarm = () => clearTimeout(timer)
+  try {
+    let current = url
+    for (let hop = 0; hop < 2; hop++) {
+      arm()
+      const res = await fetchImpl(current, {
+        redirect: 'manual',
+        signal: ctrl.signal,
+        headers: { 'User-Agent': 'OpenVFR chart document pass-through', 'Accept': 'application/pdf' },
+      })
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get('location')
+        const next = loc ? checkDocumentUrl(new URL(loc, current).toString(), cfg.hosts) : { error: 'no location' }
+        await res.body?.cancel().catch(() => undefined)             // an unread body keeps the connection busy
+        if ('error' in next) throw new UpstreamError(`redirect refused: ${next.error} (${loc})`, 502)
+        current = next.url
+        continue
+      }
+      if (res.status !== 200 || !res.body) {
+        await res.body?.cancel().catch(() => undefined)
+        throw new UpstreamError(`upstream HTTP ${res.status}`, res.status === 404 ? 404 : 502)
+      }
+      const declaredRaw = res.headers.get('content-length')
+      const declared = declaredRaw !== null && /^\d+$/.test(declaredRaw) ? Number(declaredRaw) : null
+      if (declared !== null && declared > cfg.maxBytes) {
+        await res.body.cancel().catch(() => undefined)
+        throw new UpstreamError(`body over cap (${declared} bytes declared)`, 413)
+      }
+      const reader = res.body.getReader()
+      // The first bytes decide whether this is a PDF at all; nothing is sent before they are checked.
+      const head: Uint8Array[] = []
+      let size = 0
+      let ended = false
+      while (size < PDF_MAGIC.length && !ended) {
+        const { done, value } = await reader.read()
+        if (done) { ended = true; break }
+        head.push(value)
+        size += value.byteLength
+      }
+      const first = new Uint8Array(size)
+      let off = 0
+      for (const c of head) { first.set(c, off); off += c.byteLength }
+      if (size > cfg.maxBytes) { ctrl.abort(); void reader.cancel().catch(() => undefined); throw new UpstreamError(`body over cap (${size} bytes read)`, 413) }
+      if (new TextDecoder().decode(first.subarray(0, PDF_MAGIC.length)) !== PDF_MAGIC) {
+        ctrl.abort(); void reader.cancel().catch(() => undefined)
+        throw new UpstreamError('upstream body is not a PDF', 502)
+      }
+      disarm()
+      let sent = size
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(first)
+          if (ended) controller.close()
+        },
+        async pull(controller) {
+          arm()
+          try {
+            const { done, value } = await reader.read()
+            if (done) { disarm(); controller.close(); return }
+            sent += value.byteLength
+            if (sent > cfg.maxBytes) {
+              disarm(); ctrl.abort(); void reader.cancel().catch(() => undefined)
+              controller.error(new UpstreamError(`body over cap (${sent} bytes read)`, 413))
+              return
+            }
+            controller.enqueue(value)
+          } catch (err) {
+            disarm()
+            controller.error(err)
+          }
+        },
+        cancel() {                                                   // the client went away: stop reading from the publisher
+          disarm(); ctrl.abort()
+          return reader.cancel().catch(() => undefined)
+        },
+      })
+      return { body, length: declared }
     }
-    if (res.status !== 200) {
-      await res.body?.cancel().catch(() => undefined)
-      throw new UpstreamError(`upstream HTTP ${res.status}`, res.status === 404 ? 404 : 502)
-    }
-    const body = await readCappedUpstream(res, cfg.maxBytes)
-    const magic = new TextDecoder().decode(body.subarray(0, 5))
-    if (magic !== '%PDF-') throw new UpstreamError('upstream body is not a PDF', 502)
-    return body
+    throw new UpstreamError('too many redirects', 502)
+  } catch (err) {
+    disarm()
+    ctrl.abort()
+    throw err
   }
-  throw new UpstreamError('too many redirects', 502)
 }
 
 const INDEX_MAX_BYTES = 16 * 1024 * 1024
@@ -298,8 +337,6 @@ export function chartDocumentRoutes(opts: {
 }): Hono {
   const cfg = opts.config ?? chartDocumentConfigFromEnv()
   const limit = createRateLimiter(cfg.hourlyLimit, cfg.dailyLimit)
-  const cache = createByteCache(cfg.cacheBytes, cfg.cacheTtlMs)
-  const inflight = new Map<string, Promise<Uint8Array>>()
   const app = new Hono()
 
   const indexes = createChartIndexResolver(cfg, opts.fetchImpl)
@@ -342,32 +379,24 @@ export function chartDocumentRoutes(opts: {
     }
 
     const key = checked.url.toString()
-    let body = cache.get(key)
-    if (!body) {
-      try {
-        let p = inflight.get(key)
-        if (!p) {
-          p = fetchDocument(checked.url, cfg, opts.fetchImpl).finally(() => inflight.delete(key))
-          inflight.set(key, p)
-        }
-        body = await p
-        cache.set(key, body)
-      } catch (err) {
-        const status = err instanceof UpstreamError ? err.status : 502
-        console.error('[charts/document] fetch failed', { url: key, status, error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined })
-        return c.json({ error: status === 404 ? 'Document not found.' : 'Document unavailable.' }, status === 404 ? 404 : status === 413 ? 413 : 502)
-      }
+    let doc: OpenedDocument
+    try {
+      doc = await openDocument(checked.url, cfg, opts.fetchImpl)
+    } catch (err) {
+      const status = err instanceof UpstreamError ? err.status : 502
+      console.error('[charts/document] fetch failed', { url: key, status, error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined })
+      return c.json({ error: status === 404 ? 'Document not found.' : 'Document unavailable.' }, status === 404 ? 404 : status === 413 ? 413 : 502)
     }
 
     let last = checked.url.pathname.split('/').pop() ?? 'document.pdf'
     try { last = decodeURIComponent(last) } catch { /* keep the raw name: it is only a suggested file name */ }
     const name = (last
       .replace(/[^\w.\- ]+/g, '_').slice(0, 120)) || 'document.pdf'
-    return new Response(body as Uint8Array<ArrayBuffer>, {
+    return new Response(doc.body, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Length': String(body.byteLength),
+        ...(doc.length !== null ? { 'Content-Length': String(doc.length) } : {}),
         'Content-Disposition': `inline; filename="${name}"`,
         'Cache-Control': 'private, max-age=21600',
         'X-Content-Type-Options': 'nosniff',

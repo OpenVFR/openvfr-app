@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  checkDocumentUrl, createRateLimiter, createByteCache, fetchDocument, chartDocumentRoutes, createChartIndexResolver,
+  checkDocumentUrl, createRateLimiter, openDocument, chartDocumentRoutes, createChartIndexResolver,
   type ChartDocumentConfig,
 } from './chartDocuments.js'
 
@@ -9,7 +9,7 @@ const hosts = new Set(['aip.example.org'])
 const TILES = 'https://tiles.example.org'
 const cfg: ChartDocumentConfig = {
   hosts, tilesBaseUrl: TILES, indexTtlMs: 600_000,
-  maxBytes: 1024, hourlyLimit: 3, dailyLimit: 5, cacheBytes: 10_000, cacheTtlMs: 60_000, timeoutMs: 5_000,
+  maxBytes: 1024, hourlyLimit: 3, dailyLimit: 5, timeoutMs: 5_000,
 }
 const SHA = 'ab'.repeat(32)
 
@@ -64,32 +64,108 @@ test('rate limiter: hourly then daily caps', () => {
   assert.equal(limit('u').allowed, false) // daily cap of 3 reached
 })
 
-test('byte cache: LRU eviction by size and TTL', () => {
-  let now = 0
-  const c = createByteCache(40, 1000, () => now)
-  c.set('a', new Uint8Array(10)); c.set('b', new Uint8Array(10)); c.set('c', new Uint8Array(10))
-  c.get('a')
-  c.set('d', new Uint8Array(10)); c.set('e', new Uint8Array(10))
-  assert.equal(c.get('b'), null) // least recently used went first
-  assert.ok(c.get('a'))
-  c.set('huge', new Uint8Array(30)) // over a quarter of the cache: not stored
-  assert.equal(c.get('huge'), null)
-  now = 2000
-  assert.equal(c.get('a'), null)
-})
+/** Everything a streamed document delivers. */
+async function drain(d: { body: ReadableStream<Uint8Array> }): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = []
+  const r = d.body.getReader()
+  for (;;) {
+    const { done, value } = await r.read()
+    if (done) break
+    chunks.push(value)
+  }
+  const out = new Uint8Array(chunks.reduce((n, c) => n + c.byteLength, 0))
+  let off = 0
+  for (const c of chunks) { out.set(c, off); off += c.byteLength }
+  return out
+}
 
-test('fetch: passes a PDF through, refuses non-PDF, size cap and foreign redirects', async () => {
+/** A response whose body the test feeds by hand, to see what is read and when. */
+function manualBody(headers: Record<string, string> = {}) {
+  let controller!: ReadableStreamDefaultController<Uint8Array>
+  const state = { cancelled: false, pulls: 0 }
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) { controller = c },
+    pull() { state.pulls++ },
+    cancel() { state.cancelled = true },
+  })
+  return { res: () => new Response(stream, { headers }), push: (b: Uint8Array) => controller.enqueue(b), end: () => controller.close(), state }
+}
+
+test('stream: passes a PDF through, refuses non-PDF, size cap and foreign redirects', async () => {
   const u = new URL('https://aip.example.org/a.pdf')
-  assert.deepEqual(await fetchDocument(u, cfg, fakeFetch({ [u.href]: () => new Response(PDF) })), PDF)
-  await assert.rejects(fetchDocument(u, cfg, fakeFetch({ [u.href]: () => new Response('<html>') })), /not a PDF/)
-  await assert.rejects(fetchDocument(u, cfg, fakeFetch({ [u.href]: () => new Response(new Uint8Array(2048)) })), /over cap/)
+  const doc = await openDocument(u, cfg, fakeFetch({ [u.href]: () => new Response(PDF, { headers: { 'content-length': String(PDF.byteLength) } }) }))
+  assert.equal(doc.length, PDF.byteLength)
+  assert.deepEqual(await drain(doc), PDF)
+  await assert.rejects(openDocument(u, cfg, fakeFetch({ [u.href]: () => new Response('<html>') })), /not a PDF/)
+  await assert.rejects(openDocument(u, cfg, fakeFetch({ [u.href]: () => new Response('') })), /not a PDF/)
   const redirectTo = (loc: string) => () => new Response(null, { status: 302, headers: { location: loc } })
-  await assert.rejects(fetchDocument(u, cfg, fakeFetch({ [u.href]: redirectTo('https://evil.example/a.pdf') })), /redirect refused/)
+  await assert.rejects(openDocument(u, cfg, fakeFetch({ [u.href]: redirectTo('https://evil.example/a.pdf') })), /redirect refused/)
   const ok = 'https://aip.example.org/b.pdf'
-  assert.deepEqual(await fetchDocument(u, cfg, fakeFetch({ [u.href]: redirectTo('/b.pdf'), [ok]: () => new Response(PDF) })), PDF)
+  assert.deepEqual(await drain(await openDocument(u, cfg, fakeFetch({ [u.href]: redirectTo('/b.pdf'), [ok]: () => new Response(PDF) }))), PDF)
+  await assert.rejects(openDocument(u, cfg, fakeFetch({ [u.href]: () => new Response('x', { status: 500 }) })), /upstream HTTP 500/)
+  const a404 = await openDocument(u, cfg, fakeFetch({ [u.href]: () => new Response(PDF) })).then(() => null)
+  assert.equal(a404, null)
 })
 
-test('route: disabled, auth, validation, rate limit, caching, headers', async () => {
+test('stream: a declared size over the cap is refused before a byte is read', async () => {
+  const u = new URL('https://aip.example.org/a.pdf')
+  const m = manualBody({ 'content-length': '5000' })
+  await assert.rejects(openDocument(u, cfg, fakeFetch({ [u.href]: m.res })), (e: Error & { status?: number }) => /over cap/.test(e.message) && e.status === 413)
+  assert.equal(m.state.cancelled, true)                       // the publisher's connection is released
+})
+
+test('stream: the cap is also enforced while streaming (no Content-Length), and the client sees a broken download', async () => {
+  const u = new URL('https://aip.example.org/a.pdf')
+  const m = manualBody()
+  m.push(new TextEncoder().encode('%PDF-1.7 '))
+  const doc = await openDocument(u, cfg, fakeFetch({ [u.href]: m.res }))
+  assert.equal(doc.length, null)
+  m.push(new Uint8Array(2048))                                // past the 1024-byte cap
+  await assert.rejects(drain(doc), /over cap/)
+  assert.equal(m.state.cancelled, true)
+})
+
+test('stream: nothing is buffered: the first bytes are available while the publisher is still sending', async () => {
+  const u = new URL('https://aip.example.org/a.pdf')
+  const m = manualBody()
+  m.push(new TextEncoder().encode('%P'))                      // the magic arrives split over two chunks
+  m.push(new TextEncoder().encode('DF-1.7 first'))
+  const doc = await openDocument(u, cfg, fakeFetch({ [u.href]: m.res }))      // resolved with the publisher's body still open
+  const r = doc.body.getReader()
+  let got = ''
+  while (!got.includes('first')) got += new TextDecoder().decode((await r.read()).value)
+  assert.match(got, /^%PDF-1\.7 first/)
+  assert.ok(m.state.pulls < 10)                               // backpressure: only what the reader asked for was pulled
+  m.push(new TextEncoder().encode(' second'))
+  m.end()
+  assert.match(new TextDecoder().decode((await r.read()).value), /second/)
+  assert.equal((await r.read()).done, true)
+})
+
+test('stream: a client that goes away stops the read from the publisher; a stalled publisher is cut off', async () => {
+  const u = new URL('https://aip.example.org/a.pdf')
+  const m = manualBody()
+  m.push(PDF)
+  const doc = await openDocument(u, cfg, fakeFetch({ [u.href]: m.res }))
+  await doc.body.cancel()
+  assert.equal(m.state.cancelled, true)
+
+  const stalled = manualBody()
+  stalled.push(PDF)
+  const slow = { ...cfg, timeoutMs: 30 }
+  const d2 = await openDocument(u, slow, (async (_i: unknown, init?: RequestInit) => {
+    const res = stalled.res()
+    init?.signal?.addEventListener('abort', () => stalled.end(), { once: true })      // fetch rejects the read when its signal aborts
+    return res
+  }) as typeof fetch)
+  const r2 = d2.body.getReader()
+  assert.deepEqual((await r2.read()).value, PDF)
+  const t0 = Date.now()
+  await r2.read().catch(() => undefined)                      // the publisher says nothing more: ends within the timeout, not never
+  assert.ok(Date.now() - t0 < 2000)
+})
+
+test('route: disabled, auth, validation, rate limit, streaming, headers', async () => {
   const calls: string[] = []
   const doc = 'https://aip.example.org/charts/VAC.pdf'
   const index = chartsIndex([
@@ -118,8 +194,8 @@ test('route: disabled, auth, validation, rate limit, caching, headers', async ()
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff')
   assert.deepEqual(new Uint8Array(await res.arrayBuffer()), PDF)
   assert.equal((await get('xx/evil')).status, 404)            // listed, but its host isn't allowed
-  assert.equal((await get('xx/vac1')).status, 200)            // 3rd counted request, from both caches
-  assert.equal(calls.filter(u => u === doc).length, 1)
+  assert.equal((await get('xx/vac1')).status, 200)            // 3rd counted request
+  assert.equal(calls.filter(u => u === doc).length, 2)        // every document request goes to the publisher: nothing is cached or held here
   assert.equal(calls.filter(u => u.endsWith('/manifest.json')).length, 1)
   const limited = await get('xx/vac1')                        // 4th: over the hourly limit of 3
   assert.equal(limited.status, 429)
@@ -261,8 +337,7 @@ test('config: an empty or invalid number means the default, never 0 (which would
   assert.equal(c.hourlyLimit, 120)
   assert.equal(c.dailyLimit, 600)
   assert.equal(c.maxBytes, 20 * 1024 * 1024)
-  assert.equal(c.cacheBytes, 100 * 1024 * 1024)
-  assert.equal(chartDocumentConfigFromEnv({ CHART_DOCUMENT_CACHE_MB: '0' }).cacheBytes, 0)      // 0 = cache off stays possible
+  assert.equal('cacheBytes' in c, false)                      // the document cache is gone: documents are streamed, never held
 })
 
 test('url check: a malformed percent escape is refused, not thrown', () => {
