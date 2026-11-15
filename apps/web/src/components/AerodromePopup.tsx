@@ -33,6 +33,7 @@ import { API_BASE_URL } from '../utils/env'
 import ChartsSection from './ChartsSection'
 import RouteActionButton, { type RouteActionProps } from './RouteActionButton'
 import LocalInfoSection from './LocalInfoSection'
+import { aerodromeId } from '@open-vfr/shared/aerodromeId'
 import { setCircuitFocus, useCircuitFocus } from '../utils/aerodromeDetails'
 import { loadStations as loadStationsShared, type StationRecord } from '@open-vfr/shared/wxStations'
 import { countryDatasetSource } from '@open-vfr/shared/countryData'
@@ -381,7 +382,9 @@ export default function AerodromePopup({
   // look at a different one than whichever is longest.
   const [selectedRunwayDesig, setSelectedRunwayDesig] = useState<string | null>(null)
   // Circuit focus belongs to the open popup: cleared when it closes or shows another aerodrome.
-  const adId = p.icao || null
+  // An aerodrome with no ICAO code (ESMARS) is told by its local id: it keys the local information and the circuit focus. Weather and NOTAMs
+  // still use the real `p.icao` only.
+  const adId = aerodromeId(p as unknown as Record<string, unknown>) || null
   useEffect(() => () => setCircuitFocus(null), [adId])
   useEffect(() => { setSelectedRunwayDesig(null) }, [p.icao])
 
@@ -638,7 +641,7 @@ export default function AerodromePopup({
       <>
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className={css.header}>
-          <div className={css.icao}>{p.icao || '—'}</div>
+          <div className={css.icao}>{adId || '—'}</div>
           <div className={css.nameLine}>
             <div className={css.name}>{p.name}</div>
             {p.elevation_ft != null && (
@@ -839,7 +842,7 @@ export default function AerodromePopup({
             )}
 
             {/* Local information: circuits, local rules, areas (experimental; nothing when disabled or none) */}
-            <LocalInfoSection icao={p.icao} sectionClass={css.section} titleClass={css.sectionTitle} />
+            <LocalInfoSection icao={adId ?? undefined} sectionClass={css.section} titleClass={css.sectionTitle} />
 
             {/* Official charts (experimental; renders nothing when disabled or none) */}
             <ChartsSection icao={p.icao} sectionClass={css.section} titleClass={css.sectionTitle} authed={authed} />
