@@ -53,9 +53,9 @@
     }
   },
   "dependencies": {
-    "@better-auth/passkey": "1.7.20",
+    "@better-auth/passkey": "1.7.22",
     "@expo/ui": "~58.0.28",
-    "@maplibre/maplibre-gl-style-spec": "26.5.1",
+    "@maplibre/maplibre-gl-style-spec": "26.6.0",
     "@maplibre/maplibre-react-native": "^11.5.1",
     "@open-vfr/shared": "workspace:*",
     "@protomaps/basemaps": "^5.7.2",
@@ -71,7 +71,7 @@
     "@turf/length": "^7.4.0",
     "@turf/line-intersect": "^7.4.0",
     "@turf/nearest-point-on-line": "^7.4.0",
-    "better-auth": "1.7.20",
+    "better-auth": "1.7.22",
     "buffer": "^6.0.3",
     "expo": "~58.0.25",
     "expo-application": "^58.1.2",
@@ -98,7 +98,7 @@
     "react-native": "0.88.1",
     "react-native-ble-plx": "^3.5.1",
     "react-native-gesture-handler": "^3.5.0",
-    "react-native-keyboard-controller": "1.22.9",
+    "react-native-keyboard-controller": "1.23.0",
     "react-native-passkey": "^3.6.2",
     "react-native-reanimated": "4.7.1",
     "react-native-reserved-regions": "~0.2.0",
@@ -116,7 +116,7 @@
     "@types/node": "26.6.6",
     "@types/react": "~19.3.0",
     "babel-plugin-module-resolver": "^5.0.3",
-    "babel-preset-expo": "~58.0.24",
+    "babel-preset-expo": "~58.0.25",
     "cross-env": "^10.1.0",
     "typescript": "~7.0.2"
   }
