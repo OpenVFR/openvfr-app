@@ -19,7 +19,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { API_BASE_URL } from '../utils/env'
-import { regionsParam } from '@open-vfr/shared/notamRegionScope'
+import { regionsQueryString } from '@open-vfr/shared/notamRegionScope'
 import { trafficOnGround, trafficAltitudeM } from '@open-vfr/shared/trafficState'
 
 // ── Types exported to consumers ───────────────────────────────────────────────
@@ -51,6 +51,13 @@ export interface TrafficTarget {
 
 /** Remove targets not seen in this many seconds. */
 const STALE_S = 180
+
+/** Wait this long after a region-set change before swapping the stream (a route edit changes it several times). */
+const REGION_SETTLE_MS = 1_500
+
+/** Retry delay after the server refused the stream (doubles up to the max). */
+const STREAM_RETRY_MS = 5_000
+const STREAM_RETRY_MAX_MS = 60_000
 
 /** If no SSE message arrives within this many seconds, clear all targets (server offline). */
 const WATCHDOG_S = 130
@@ -175,7 +182,12 @@ interface UseTrafficOptions {
 
 export function useTraffic(opts: UseTrafficOptions = {}): TrafficTarget[] {
   const { ownAltFt = null, enabled = true, regions } = opts
-  const regionsQuery = regions && regions.length > 0 ? regionsParam(regions) : ''
+  const regionsQuery = regionsQueryString(regions)
+  // The stream URL query is read at (re)connect time; the effect below must not restart on a region change
+  // (that cleared all targets and blinked the layer), see swapStreamRef.
+  const regionsQueryRef = useRef(regionsQuery)
+  regionsQueryRef.current = regionsQuery
+  const swapStreamRef = useRef<((query: string) => void) | null>(null)
 
   // Ref so dead-reckoning loop always sees latest ownAlt without re-running effect
   const ownAltRef = useRef(ownAltFt)
@@ -196,6 +208,9 @@ export function useTraffic(opts: UseTrafficOptions = {}): TrafficTarget[] {
     let reckTimer: ReturnType<typeof setInterval> | null = null
     let watchdogTimer: ReturnType<typeof setTimeout> | null = null
     let destroyed = false
+    let openQuery: string | null = null
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+    let retryMs = STREAM_RETRY_MS
 
     function resetWatchdog() {
       if (watchdogTimer) clearTimeout(watchdogTimer)
@@ -206,6 +221,63 @@ export function useTraffic(opts: UseTrafficOptions = {}): TrafficTarget[] {
           setTargets([])
         }
       }, WATCHDOG_S * 1000)
+    }
+
+    // Open (or swap) the SSE stream. withCredentials:true is EventSource's OWN,
+    // separate cross-origin credentials flag -- NOT the same mechanism
+    // as fetch()'s credentials:'include' below, and easy to miss since
+    // it doesn't share the same option name. Same requirement, same
+    // reason: /api/traffic/stream is session-gated, and without this
+    // the session cookie is never sent cross-origin, so the stream 401s.
+    // A swap (region set changed) keeps the targets: the server sends the
+    // new set's batch right on connect and the old ones go stale on their own.
+    function openStream(query: string) {
+      if (destroyed) return
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null }
+      if (evtSource) evtSource.close()
+      openQuery = query
+      const es = new EventSource(`${API_BASE_URL}/api/traffic/stream${query}`, { withCredentials: true })
+      evtSource = es
+      resetWatchdog()
+
+      es.onmessage = (ev) => {
+        if (destroyed || es !== evtSource) return
+        resetWatchdog()  // received a message — server is alive
+        retryMs = STREAM_RETRY_MS
+        try {
+          const batch = JSON.parse(ev.data) as {
+            polledAt: number
+            states: RawState[]
+          }
+          const polledAt = batch.polledAt
+          const store = storeRef.current
+          const nowS = Date.now() / 1000
+
+          for (const s of batch.states) {
+            if (s.lat == null || s.lon == null) continue
+            // The batch is rebroadcast every few seconds while an OpenSky
+            // position only changes once per poll: dead-reckon from when
+            // the position was measured, not from when the batch was sent.
+            const ageS = Math.max(0, polledAt - (s.posTime ?? polledAt))
+            store.set(s.icao24, { raw: s, seenAt: nowS, posAt: nowS - ageS })
+          }
+
+          for (const [id, stored] of store) {
+            if (isStale(stored, nowS)) store.delete(id)
+          }
+        } catch { /* ignore malformed events */ }
+      }
+
+      es.onerror = () => {
+        // readyState CONNECTING: the browser reconnects by itself -- do nothing.
+        // CLOSED: the server refused the stream (401, or 429 when too many
+        // streams are open) and the browser will not retry: do it ourselves,
+        // with backoff. The targets stay and go stale (or the watchdog clears them).
+        if (es.readyState !== EventSource.CLOSED || es !== evtSource) return
+        evtSource = null
+        retryTimer = setTimeout(() => openStream(regionsQueryRef.current), retryMs)
+        retryMs = Math.min(retryMs * 2, STREAM_RETRY_MAX_MS)
+      }
     }
 
     // Check availability before opening SSE
@@ -226,53 +298,9 @@ export function useTraffic(opts: UseTrafficOptions = {}): TrafficTarget[] {
         availableRef.current = any
         if (!any) return  // graceful silence — no traffic feed configured
 
-        // Open SSE stream. withCredentials:true is EventSource's OWN,
-        // separate cross-origin credentials flag -- NOT the same mechanism
-        // as fetch()'s credentials:'include' above, and easy to miss since
-        // it doesn't share the same option name. Same requirement, same
-        // reason: /api/traffic/stream is session-gated, and without this
-        // the session cookie is never sent cross-origin, so the stream
-        // 401s (silently, same as above -- EventSource surfaces this via
-        // onerror, which this code already treats as "stay silent" for the
-        // CONNECTING-state auto-reconnect case).
-        evtSource = new EventSource(`${API_BASE_URL}/api/traffic/stream${regionsQuery ? `?regions=${encodeURIComponent(regionsQuery)}` : ''}`, { withCredentials: true })
-        resetWatchdog()
-
-        evtSource.onmessage = (ev) => {
-          if (destroyed) return
-          resetWatchdog()  // received a message — server is alive
-          try {
-            const batch = JSON.parse(ev.data) as {
-              polledAt: number
-              states: RawState[]
-            }
-            const polledAt = batch.polledAt
-            const store = storeRef.current
-            const nowS = Date.now() / 1000
-
-            for (const s of batch.states) {
-              if (s.lat == null || s.lon == null) continue
-              // The batch is rebroadcast every few seconds while an OpenSky
-              // position only changes once per poll: dead-reckon from when
-              // the position was measured, not from when the batch was sent.
-              const ageS = Math.max(0, polledAt - (s.posTime ?? polledAt))
-              store.set(s.icao24, { raw: s, seenAt: nowS, posAt: nowS - ageS })
-            }
-
-            for (const [id, stored] of store) {
-              if (isStale(stored, nowS)) store.delete(id)
-            }
-          } catch { /* ignore malformed events */ }
-        }
-
-        evtSource.onerror = () => {
-          // If EventSource was explicitly closed (readyState CLOSED), clear targets
-          // and stop — browser will not auto-reconnect from a CLOSED state.
-          if (evtSource?.readyState === EventSource.CLOSED) {
-            storeRef.current.clear()
-            if (!destroyed) setTargets([])
-          }
-          // Otherwise (readyState CONNECTING) the browser auto-reconnects — do nothing.
+        openStream(regionsQueryRef.current)
+        swapStreamRef.current = (query) => {
+          if (query !== openQuery) openStream(query)
         }
 
         // 1 s dead-reckoning render loop
@@ -294,12 +322,22 @@ export function useTraffic(opts: UseTrafficOptions = {}): TrafficTarget[] {
 
     return () => {
       destroyed = true
+      swapStreamRef.current = null
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null }
       if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null }
       if (evtSource) { evtSource.close(); evtSource = null }
       if (reckTimer) { clearInterval(reckTimer); reckTimer = null }
       storeRef.current.clear()
       setTargets([])
     }
+  }, [enabled])
+
+  // Region set changed (route edit, own position into another country): swap the
+  // stream once the set has settled, keeping the targets shown.
+  useEffect(() => {
+    if (!enabled) return
+    const t = setTimeout(() => swapStreamRef.current?.(regionsQuery), REGION_SETTLE_MS)
+    return () => clearTimeout(t)
   }, [enabled, regionsQuery])
 
   return targets

@@ -57,8 +57,8 @@
  */
 
 import net from 'node:net'
-import { boxesFor } from './trafficRegions'
-import { activeRegionCodes, scopeCodes, hasActiveConsumers, onConsumerActivity, setOgnConnected, updateOgnState, pruneAndBroadcastOgn, type TrafficState } from './traffic'
+import { boxesFor, makeScope, type Box } from './trafficRegions'
+import { activeRegionCodes, hasActiveConsumers, onConsumerActivity, setOgnConnected, updateOgnState, pruneAndBroadcastOgn, type TrafficState } from './traffic'
 import { startDdbPrivacyRefresh, isTrackingOptedOut } from './ognDdbPrivacy'
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ const APRS_PORT = parseInt(process.env['OGN_APRS_PORT'] ?? '14580', 10)
  * (Empty strings count as unset: docker-compose passes `${VAR:-}` as ''.)
  */
 export function ognFilter(
-  bbox: [number, number, number, number],
+  bbox: Box,
   env: Record<string, string | undefined>,
 ): string {
   const lat = parseFloat(env['OGN_FILTER_LAT'] || '')
@@ -95,30 +95,33 @@ export function ognFilter(
 }
 
 /**
- * Filter for the regions consumers currently look at: one `a/` area term per
- * region (terms are space-separated and OR together), not one rectangle over
- * all of them -- SE+AT must not pull in DE/CZ/PL. OGN_FILTER_LAT/LON still
- * force a circle. Exported for tests.
+ * Filter for a set of region codes: one `a/` area term per region (terms are
+ * space-separated and OR together), not one rectangle over all of them --
+ * SE+AT must not pull in DE/CZ/PL. OGN_FILTER_LAT/LON still force a circle.
+ * No known code = the default region (what makeScope does). Exported for tests.
  */
 export function ognFilterForRegions(
   codes: readonly string[],
   env: Record<string, string | undefined>,
 ): string {
-  const boxes = boxesFor(codes)
-  if (boxes.length === 0) return ognFilter([0, 0, 0, 0], env)
-  return boxes.map(b => ognFilter(b as [number, number, number, number], env)).filter((t, i, a) => a.indexOf(t) === i).join(' ')
+  const boxes = makeScope(codes).boxes
+  return [...new Set(boxes.map(b => ognFilter(b, env)))].join(' ')
 }
 
-/** Filter wanted right now (active consumers' regions, default region when none yet). */
-function currentFilter(): string {
-  const codes = activeRegionCodes()
-  return ognFilterForRegions(codes.length > 0 ? codes : scopeCodes(null), process.env)
-}
-/** Filter of the open socket. */
-let _socketFilter = ''
+/** Region codes the open socket's filter was built for. */
+let _socketCodes: readonly string[] = []
 let _lastConnectAt = 0
 /** Min time between filter-change reconnects. */
 const FILTER_RECONNECT_MIN_MS = 10_000
+/**
+ * A filter wider than needed is kept this long before narrowing: narrowing
+ * reconnects the socket (all OGN traffic pauses for everyone), and a user
+ * who leaves or crosses a border would otherwise cost two reconnects.
+ * Growing the filter is immediate (someone is waiting for that region).
+ */
+const FILTER_SHRINK_HOLD_MS = 10 * 60_000
+/** Since when the socket has been wider than the wanted set (0 = not). */
+let _shrinkSince = 0
 
 /** How stale (seconds) an OGN target can be before it's pruned from the merged batch. Shorter than OpenSky's 180s STALE_S since OGN targets update far more frequently (every few seconds vs. OpenSky's ~65s poll). */
 const OGN_STALE_S = 120
@@ -277,8 +280,10 @@ let _broadcastTimer: ReturnType<typeof setInterval> | null = null
 function connect(): void {
   if (_socket || !ENABLED) return
 
-  const filter = currentFilter()
-  _socketFilter = filter
+  const codes = makeScope(activeRegionCodes()).codes
+  const filter = ognFilterForRegions(codes, process.env)
+  _socketCodes = codes
+  _shrinkSince = 0
   _lastConnectAt = Date.now()
   console.log(`[ogn] Connecting to ${APRS_HOST}:${APRS_PORT} (filter ${filter})`)
   const socket = net.createConnection({ host: APRS_HOST, port: APRS_PORT })
@@ -333,17 +338,38 @@ function connect(): void {
   })
 }
 
-/** The regions consumers look at changed: reconnect with the new filter (APRS-IS filters are set at login). */
+/**
+ * The regions consumers look at changed: reconnect with the new filter (APRS-IS
+ * filters are set at login). Immediately when a region was added; when only
+ * shrunk, after FILTER_SHRINK_HOLD_MS. Cheap per call (the union is cached).
+ */
 function refreshFilter(): void {
   if (!_socket || _reconnectTimer) return
-  if (currentFilter() === _socketFilter) return
+  const wanted = makeScope(activeRegionCodes()).codes
+  const have = new Set(_socketCodes)
+  const grew = wanted.some(c => !have.has(c))
+  if (!grew) {
+    if (wanted.length === have.size) { _shrinkSince = 0; return }
+    const now = Date.now()
+    if (_shrinkSince === 0) _shrinkSince = now
+    if (now - _shrinkSince < FILTER_SHRINK_HOLD_MS) return
+  }
   if (Date.now() - _lastConnectAt < FILTER_RECONNECT_MIN_MS) return  // next idle tick retries
-  console.log('[ogn] Consumer regions changed — reconnecting with new filter')
+  console.log(`[ogn] Consumer regions changed (${wanted.join(',')}) — reconnecting with new filter`)
+  // No setOgnConnected(false): the feed is only briefly interrupted and the
+  // connected-since time must survive, or batches count as not fresh for
+  // OGN_WARMUP_MS after every region change. The old socket's close event is
+  // ignored (see connect()); a failed new socket reports itself.
   const old = _socket
   _socket = null
-  setOgnConnected(false)
   old.destroy()
   connect()
+}
+
+/** Open the socket if needed and make sure its filter matches the consumers. */
+function ensureConnected(): void {
+  connect()
+  refreshFilter()
 }
 
 function disconnect(): void {
@@ -370,16 +396,16 @@ export function startOgnRelay(): void {
     return
   }
   startDdbPrivacyRefresh()
-  console.log(`[ogn] Relay ready — will connect on first consumer activity (idle-gated), filter ${currentFilter()}`)
+  console.log(`[ogn] Relay ready — will connect on first consumer activity (idle-gated), filter ${ognFilterForRegions(makeScope(activeRegionCodes()).codes, process.env)}`)
 
   _idleCheckTimer = setInterval(() => {
-    if (hasActiveConsumers()) { connect(); refreshFilter() }
+    if (hasActiveConsumers()) ensureConnected()
     else disconnect()
   }, OGN_IDLE_CHECK_MS)
   // Connect on the first consumer request instead of the next idle-watcher
   // tick. connect() is a no-op while a socket is open; while a reconnect
   // after an error is pending, leave it to that timer.
-  onConsumerActivity(() => { if (!_reconnectTimer) { connect(); refreshFilter() } })
+  onConsumerActivity(() => { if (!_reconnectTimer) ensureConnected() })
 
   _broadcastTimer = setInterval(() => {
     if (_socket) pruneAndBroadcastOgn(OGN_STALE_S)

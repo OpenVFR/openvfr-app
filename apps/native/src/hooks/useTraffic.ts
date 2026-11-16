@@ -37,7 +37,7 @@ import type { FeatureCollection, Feature, Point } from 'geojson'
 import { TRAFFIC_BASE } from '../config'
 import { authHeaders } from '../utils/authClient'
 import { selectTrafficIcon } from '../utils/trafficIcons'
-import { regionsParam } from '@open-vfr/shared/notamRegionScope'
+import { regionsQueryString } from '@open-vfr/shared/notamRegionScope'
 import { trafficOnGround, trafficAltitudeM } from '@open-vfr/shared/trafficState'
 
 // ── Types (mirrors server TrafficState) ───────────────────────────────────────
@@ -141,7 +141,9 @@ const EMPTY_TRAFFIC: FeatureCollection = { type: 'FeatureCollection', features: 
  * of the JS thread at idle). Only the traffic layer subscribes to it.
  */
 export function useTraffic({ enabled, ownAltFt, vertFilterFt = 0, ownLat = null, ownLon = null, regions }: Options): ValueStore<FeatureCollection> {
-  const regionsQuery = regions && regions.length > 0 ? regionsParam(regions) : ''
+  const regionsQuery = regionsQueryString(regions)
+  // Bumped whenever the poll loop restarts (region change, layer off): answers of older polls are dropped.
+  const pollGenRef = useRef(0)
   const batchRef    = useRef<TrafficBatch | null>(null)
   // Device-clock unix seconds when batchRef's batch arrived: positions are
   // dead-reckoned on this clock, so server/device clock skew does not matter.
@@ -155,11 +157,13 @@ export function useTraffic({ enabled, ownAltFt, vertFilterFt = 0, ownLat = null,
 
   // ── Poll server ───────────────────────────────────────────────────────────
   /** True when the server returned a batch built recently (live traffic). */
-  const poll = useCallback(async (): Promise<boolean> => {
+  const poll = useCallback(async (gen: number): Promise<boolean> => {
     try {
-      const r = await fetch(`${TRAFFIC_BASE}/api/traffic/latest${regionsQuery ? `?regions=${encodeURIComponent(regionsQuery)}` : ''}`, { headers: await authHeaders() })
+      const r = await fetch(`${TRAFFIC_BASE}/api/traffic/latest${regionsQuery}`, { headers: await authHeaders() })
       if (!r.ok) return false
       const data = await r.json() as TrafficBatch
+      // A poll for the previous region set must not overwrite the new one's batch.
+      if (gen !== pollGenRef.current) return false
       if (data.polledAt > 0) { batchRef.current = data; receivedAtRef.current = Date.now() / 1000 }
       // Freshness is the server's call (its clock, its poll interval): no
       // device clock skew involved.
@@ -168,6 +172,7 @@ export function useTraffic({ enabled, ownAltFt, vertFilterFt = 0, ownLat = null,
   }, [regionsQuery])
 
   useEffect(() => {
+    const gen = ++pollGenRef.current
     if (!enabled) {
       batchRef.current = null
       store.set(EMPTY_TRAFFIC)
@@ -181,7 +186,7 @@ export function useTraffic({ enabled, ownAltFt, vertFilterFt = 0, ownLat = null,
     let timer: ReturnType<typeof setTimeout> | null = null
     let retryMs = RETRY_INTERVAL_MS
     const run = async () => {
-      const fresh = await poll()
+      const fresh = await poll(gen)
       if (cancelled) return
       // Stale or failed: 10 s, 20 s, 40 s, then the normal interval -- a
       // server that can't produce (feeds down) is not hammered.

@@ -134,6 +134,12 @@ export function regionsParam(regions: string[]): string {
   return [...new Set(regions)].sort().join(',')
 }
 
+/** `?regions=se,dk` suffix for a request URL; '' for an empty list (the server then uses its default region). */
+export function regionsQueryString(regions: string[] | undefined): string {
+  const v = regions && regions.length > 0 ? regionsParam(regions) : ''
+  return v ? `?regions=${encodeURIComponent(v)}` : ''
+}
+
 /**
  * Parses a `regions` query value. Returns null when the parameter is
  * absent/empty (caller decides the fallback), or `{ error }` naming the

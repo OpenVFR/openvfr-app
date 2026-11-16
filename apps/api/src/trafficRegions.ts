@@ -11,7 +11,7 @@
  * Boxes are the rough region bboxes from @open-vfr/shared/regions and overlap
  * near borders, which errs toward inclusion (safe for traffic awareness).
  */
-import { EUROPEAN_REGIONS } from '@open-vfr/shared/regions'
+import { DEFAULT_REGION_CODES, EUROPEAN_REGIONS } from '@open-vfr/shared/regions'
 import type { TrafficBatch, TrafficState } from './traffic'
 
 /** [latMin, lonMin, latMax, lonMax] */
@@ -52,4 +52,42 @@ export function filterBatch(batch: TrafficBatch, boxes: readonly Box[]): Traffic
 /** Canonical key of a region set (sorted, unique, known codes only). */
 export function regionKey(codes: Iterable<string>): string {
   return [...new Set([...codes].filter(c => BOX_BY_CODE.has(c)))].sort().join(',')
+}
+
+/** Smallest box around all of `boxes`, [latMin, lonMin, latMax, lonMax]. */
+export function unionBox(boxes: readonly Box[]): Box {
+  return [
+    Math.min(...boxes.map(b => b[0])), Math.min(...boxes.map(b => b[1])),
+    Math.max(...boxes.map(b => b[2])), Math.max(...boxes.map(b => b[3])),
+  ]
+}
+
+/** Default OpenSky poll area: every known region (Iceland to Cyprus). One call, 4 credits whatever the size. */
+export const EUROPE_BOX: Box = unionBox(ALL_BOXES)
+
+/** A validated region set, computed once and shared: key for maps, codes for the OGN filter, boxes for filtering. */
+export interface RegionScope {
+  readonly key: string
+  readonly codes: readonly string[]
+  readonly boxes: readonly Box[]
+}
+
+const _scopes = new Map<string, RegionScope>()
+const MAX_CACHED_SCOPES = 512
+
+/**
+ * Scope for a client's `regions` list: unknown codes dropped, empty/absent =
+ * the default region (clients predating the parameter only had its data).
+ * Same set -> same object.
+ */
+export function makeScope(regions?: readonly string[] | null): RegionScope {
+  let key = regionKey(regions ?? [])
+  if (key === '') key = regionKey(DEFAULT_REGION_CODES)
+  const hit = _scopes.get(key)
+  if (hit) return hit
+  const codes = key.split(',')
+  const scope: RegionScope = { key, codes, boxes: boxesFor(codes) }
+  if (_scopes.size >= MAX_CACHED_SCOPES) _scopes.clear()
+  _scopes.set(key, scope)
+  return scope
 }

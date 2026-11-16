@@ -28,7 +28,7 @@
  * Required env vars (optional — traffic disabled if unset):
  *   OPENSKY_CLIENT_ID      OAuth2 client ID from opensky-network.org account
  *   OPENSKY_CLIENT_SECRET  OAuth2 client secret
- *   OPENSKY_BBOX           lat_min,lon_min,lat_max,lon_max  (default: Europe, 34,-12,72,45)
+ *   OPENSKY_BBOX           lat_min,lon_min,lat_max,lon_max  (default: all known regions, ~34,-25.5,72,41)
  *   OPENSKY_POLL_INTERVAL_S  seconds between polls — explicit override.
  *                            If unset, computed automatically from
  *                            OPENSKY_DAILY_CREDITS and the bbox credit cost
@@ -44,7 +44,7 @@
  *                          fresher traffic instead of leaving it unused.
  *
  * Credit math (auto-computed, not hardcoded — see computeDefaultIntervalS()):
- *   Anything above 400 sq° (the Europe default ≈ 2,200 sq°) → 4 credits/call,
+ *   Anything above 400 sq° (the Europe default ≈ 2,500 sq°) → 4 credits/call,
  *   so a bigger box costs nothing extra: poll all of Europe once.
  *   4,000 credits/day ÷ 4/call → 1,000 calls/day → ~89 s interval
  *   8,000 credits/day (1 feeder) ÷ 4/call → 2,000 calls/day → ~45 s interval
@@ -70,8 +70,7 @@
  *  16  position_source int
  */
 
-import { DEFAULT_REGION_CODES } from '@open-vfr/shared/regions'
-import { ALL_BOXES, boxesFor, filterBatch, inAnyBox, regionKey } from './trafficRegions'
+import { ALL_BOXES, EUROPE_BOX, filterBatch, inAnyBox, makeScope, type RegionScope } from './trafficRegions'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -152,10 +151,13 @@ function parseBbox(raw: string): [number, number, number, number] {
   if (parts.length === 4 && parts.every(isFinite)) {
     return parts as [number, number, number, number]
   }
-  // Default: Europe (approx 2,200 sq°, 4 credits/call whatever the size)
-  return [34.0, -12.0, 72.0, 45.0]
+  // Default: every known region (see trafficRegions EUROPE_BOX, ~2,500 sq°,
+  // 4 credits/call whatever the size)
+  return [...EUROPE_BOX] as [number, number, number, number]
 }
 
+/** OPENSKY_BBOX set and valid (not the derived Europe default). */
+const BBOX_EXPLICIT = process.env['OPENSKY_BBOX'] !== undefined && process.env['OPENSKY_BBOX'].split(',').map(Number).filter(isFinite).length === 4
 export const BBOX   = parseBbox(process.env['OPENSKY_BBOX'] ?? '')
 
 /** Credits per /states/all call: area(sq deg) <= 25 -> 1, <= 100 -> 2, <= 400 -> 3, else 4. */
@@ -240,54 +242,78 @@ async function getToken(): Promise<string> {
 
 type SseWriter = (data: string) => void
 
-/** Open SSE clients -> region-set key (trafficRegions.regionKey). */
-const _clients = new Map<SseWriter, string>()
-/** Region-set key -> last /latest request (epoch ms): native has no open connection. */
-const _latestKeys = new Map<string, number>()
+/** Open SSE clients -> their region scope. */
+const _clients = new Map<SseWriter, RegionScope>()
+/** Region-set key -> scope + last /latest request (epoch ms): native has no open connection. */
+const _latestScopes = new Map<string, { scope: RegionScope; at: number }>()
+/** Most distinct /latest region sets remembered (a client can send any valid combination). */
+const MAX_LATEST_SCOPES = 256
 
-/** Region codes of a request: validated, or the default region when absent. */
-export function scopeCodes(regions: string[] | null | undefined): string[] {
-  const codes = regions && regions.length > 0 ? regions : [...DEFAULT_REGION_CODES]
-  return regionKey(codes).split(',').filter(Boolean)
+// Union of the regions consumers asked for, cached: recomputed only when a
+// consumer registers/leaves/uses a new set, or when a /latest set expires.
+let _activeCodes: string[] = []
+let _activeDirty = true
+let _activeNextExpiry = Infinity
+
+/** Drops expired /latest sets (the only time-based part of the union). */
+function pruneLatestScopes(now: number): void {
+  for (const [key, v] of _latestScopes) {
+    if (now - v.at >= IDLE_TIMEOUT_MS) { _latestScopes.delete(key); _activeDirty = true }
+  }
 }
 
 /**
  * Union of the region codes any active consumer asked for (open SSE streams,
- * /latest requests within IDLE_TIMEOUT_MS). ognTraffic.ts builds its APRS-IS
- * filter from it, so the OGN firehose only covers where someone is looking.
+ * /latest requests within IDLE_TIMEOUT_MS), sorted. ognTraffic.ts builds its
+ * APRS-IS filter from it, so the OGN firehose only covers where someone is
+ * looking. Cached; also evicts expired /latest sets when one is due.
  */
 export function activeRegionCodes(): string[] {
   const now = Date.now()
+  if (!_activeDirty && now < _activeNextExpiry) return _activeCodes
+  pruneLatestScopes(now)
   const out = new Set<string>()
-  for (const key of _clients.values()) for (const c of key.split(',')) if (c) out.add(c)
-  for (const [key, at] of _latestKeys) {
-    if (now - at >= IDLE_TIMEOUT_MS) { _latestKeys.delete(key); continue }
-    for (const c of key.split(',')) if (c) out.add(c)
+  for (const sc of _clients.values()) for (const c of sc.codes) out.add(c)
+  let next = Infinity
+  for (const v of _latestScopes.values()) {
+    for (const c of v.scope.codes) out.add(c)
+    next = Math.min(next, v.at + IDLE_TIMEOUT_MS)
   }
-  return [...out].sort()
+  _activeCodes = [...out].sort()
+  _activeNextExpiry = next
+  _activeDirty = false
+  return _activeCodes
 }
 
-export function registerClient(write: SseWriter, regions?: string[] | null): () => void {
-  const key = regionKey(scopeCodes(regions))
-  _clients.set(write, key)
+// The batch reduced to one region scope, built once per batch and scope
+// (every /latest and every SSE broadcast of the same set shares it).
+const _scoped = new Map<string, { batch: TrafficBatch; json?: string }>()
+
+function scopedFor(batch: TrafficBatch, scope: RegionScope): { batch: TrafficBatch; json?: string } {
+  let e = _scoped.get(scope.key)
+  if (!e) { e = { batch: filterBatch(batch, scope.boxes) }; _scoped.set(scope.key, e) }
+  return e
+}
+
+function scopedJson(batch: TrafficBatch, scope: RegionScope): string {
+  const e = scopedFor(batch, scope)
+  return (e.json ??= JSON.stringify(e.batch))
+}
+
+export function registerClient(write: SseWriter, regions?: readonly string[] | null): () => void {
+  _clients.set(write, makeScope(regions))
+  _activeDirty = true
   touchActivity()
   // Immediately send the latest batch if we have one
   if (_lastBatch) {
-    try { write(JSON.stringify(filterBatch(_lastBatch, boxesFor(key.split(','))))) } catch { /* client gone */ }
+    try { write(scopedJson(_lastBatch, _clients.get(write)!)) } catch { /* client gone */ }
   }
-  return () => { _clients.delete(write) }
+  return () => { _clients.delete(write); _activeDirty = true }
 }
 
 function broadcast(batch: TrafficBatch): void {
-  // Serialise once per distinct region set, not once per client.
-  const payloads = new Map<string, string>()
-  for (const [write, key] of _clients) {
-    let payload = payloads.get(key)
-    if (payload === undefined) {
-      payload = JSON.stringify(filterBatch(batch, boxesFor(key.split(','))))
-      payloads.set(key, payload)
-    }
-    try { write(payload) } catch { _clients.delete(write) }
+  for (const [write, scope] of _clients) {
+    try { write(scopedJson(batch, scope)) } catch { _clients.delete(write); _activeDirty = true }
   }
 }
 
@@ -308,9 +334,19 @@ let _lastActivityAt = 0
 
 const _activityListeners: (() => void)[] = []
 
-export function touchActivity(regions?: string[] | null): void {
+export function touchActivity(regions?: readonly string[] | null): void {
   _lastActivityAt = Date.now()
-  if (regions !== undefined) _latestKeys.set(regionKey(scopeCodes(regions)), _lastActivityAt)
+  if (regions !== undefined) {
+    const scope = makeScope(regions)
+    if (!_latestScopes.has(scope.key)) _activeDirty = true
+    _latestScopes.set(scope.key, { scope, at: _lastActivityAt })
+    // Bounded even with OGN off (nothing else calls activeRegionCodes then).
+    pruneLatestScopes(_lastActivityAt)
+    if (_latestScopes.size > MAX_LATEST_SCOPES) {
+      const oldest = [..._latestScopes.entries()].sort((x, y) => x[1].at - y[1].at)[0]
+      if (oldest) { _latestScopes.delete(oldest[0]); _activeDirty = true }
+    }
+  }
   ensurePolling()
   for (const fn of _activityListeners) fn()
 }
@@ -340,7 +376,8 @@ const OGN_WARMUP_MS = 5_000
 
 /** ognTraffic.ts reports its socket state (connected now / closed). */
 export function setOgnConnected(connected: boolean): void {
-  _ognConnectedAt = connected ? Date.now() : 0
+  // Already connected: keep the original time (a filter-only reconnect is no new warm-up).
+  _ognConnectedAt = connected ? (_ognConnectedAt || Date.now()) : 0
 }
 
 function openskyCanPoll(): boolean {
@@ -385,9 +422,9 @@ function settleWaiters(): void {
  * OpenSky failing / backing off, and OGN disabled). Woken by the batch
  * updates, no polling loop.
  */
-export function getFreshBatch(maxWaitMs: number, regions?: string[] | null): Promise<{ batch: TrafficBatch | null; fresh: boolean }> {
-  const boxes = boxesFor(scopeCodes(regions))
-  const answer = () => ({ batch: _lastBatch ? filterBatch(_lastBatch, boxes) : null, fresh: batchIsFresh(_lastBatch) })
+export function getFreshBatch(maxWaitMs: number, regions?: readonly string[] | null): Promise<{ batch: TrafficBatch | null; fresh: boolean }> {
+  const scope = makeScope(regions)
+  const answer = () => ({ batch: _lastBatch ? scopedFor(_lastBatch, scope).batch : null, fresh: batchIsFresh(_lastBatch) })
   if (batchIsFresh(_lastBatch) || !anyFeedCanProduce()) return Promise.resolve(answer())
   return new Promise((resolve) => {
     const done = () => { clearTimeout(timer); _freshWaiters.delete(done); resolve(answer()) }
@@ -464,6 +501,7 @@ export function mergeTrafficStates(opensky: TrafficState[], ogn: Iterable<Traffi
 
 function recomputeAndBroadcast(): void {
   _lastBatch = { polledAt: Math.floor(Date.now() / 1000), states: mergeTrafficStates(_openskyStates, _ognStates.values()) }
+  _scoped.clear()
   broadcast(_lastBatch)
   settleWaiters()
 }
@@ -536,8 +574,10 @@ async function poll(): Promise<number> {
         source:      'opensky' as const,
       }))
 
-    // Drop the rectangle's dead space (sea, countries we have no data for).
-    _openskyStates = states.filter(st => inAnyBox(st.lat, st.lon, ALL_BOXES))
+    // Default box only: drop its dead space (sea, countries we have no data
+    // for). An explicit OPENSKY_BBOX is honoured as is (it may lie outside
+    // the known regions).
+    _openskyStates = BBOX_EXPLICIT ? states : states.filter(st => inAnyBox(st.lat, st.lon, ALL_BOXES))
     _openskyOkAt = Math.floor(Date.now() / 1000)
     _openskyBlockedUntil = 0
     recomputeAndBroadcast()

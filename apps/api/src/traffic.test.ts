@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseLine, ognFilter, ognFilterForRegions } from './ognTraffic.js'
-import { filterBatch, boxesFor, inAnyBox, regionKey, ALL_BOXES } from './trafficRegions.js'
+import { filterBatch, boxesFor, inAnyBox, regionKey, ALL_BOXES, makeScope, EUROPE_BOX } from './trafficRegions.js'
 import { mergeTrafficStates, getFreshBatch, batchIsFresh, type TrafficState } from './traffic.js'
 
 const NOW = 1_800_000_000
@@ -118,4 +118,18 @@ test('filterBatch keeps targets inside the regions only', () => {
   assert.equal(inAnyBox(sea.lat, sea.lon, ALL_BOXES), false)
   assert.equal(filterBatch(batch, ALL_BOXES).states.length, 2)
   assert.equal(inAnyBox(null, 1, ALL_BOXES), false)
+})
+
+test('makeScope: default region when empty/unknown, same set = same object, unknown dropped', () => {
+  assert.equal(makeScope(null).key, 'se')
+  assert.equal(makeScope(['zz']).key, 'se')
+  assert.equal(makeScope(['dk', 'se']), makeScope(['se', 'dk', 'xx']))
+  assert.deepEqual(makeScope(['se', 'dk']).codes, ['dk', 'se'])
+})
+
+test('default poll box covers every region (Iceland too) and stays a 4-credit call', () => {
+  const [s, w, n, e] = EUROPE_BOX
+  assert.ok(inAnyBox(64.1, -21.9, [EUROPE_BOX]))  // Reykjavik
+  assert.ok((n - s) * (e - w) > 400)
+  for (const b of ALL_BOXES) assert.ok(b[0] >= s && b[1] >= w && b[2] <= n && b[3] <= e)
 })

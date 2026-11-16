@@ -243,13 +243,21 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   the answer. The counters are in memory, so a restart resets them. Each
   extraction writes one log line with its token usage and time.
 - `OPENSKY_CLIENT_ID` / `OPENSKY_CLIENT_SECRET` — optional, enables live
-  ADS-B traffic overlay. `OPENSKY_BBOX` (south,west,north,east) sets the
-  area.
+  ADS-B traffic overlay. The api polls all known regions (Iceland to Cyprus)
+  in one call by default: a call over 400 sq° costs 4 credits whatever the
+  size. Each client only receives the regions it asks for (`?regions=`).
+  `OPENSKY_DAILY_CREDITS` (default 4000; 8000 with a feeder) derives the poll
+  interval (4000 -> ~89 s, 8000 -> ~45 s). `OPENSKY_BBOX`
+  (south,west,north,east) restricts the polled area (set it only to poll less
+  than that); `OPENSKY_POLL_INTERVAL_S` overrides the interval, and must stay
+  above `86400 x credits per call / daily credits`.
 - `OGN_ENABLED` — default `true`: merges Open Glider Network traffic
   (FLARM, and ADS-B heard by OGN ground receivers) into the same overlay;
-  no credentials needed. It covers the `OPENSKY_BBOX` rectangle unless both
-  `OGN_FILTER_LAT` and `OGN_FILTER_LON` are set, which switch it to a circle
-  of `OGN_FILTER_RADIUS_KM` (default 350) around that point.
+  no credentials needed. It receives only the regions clients currently ask
+  for (one area term per region; the filter is widened at once and narrowed
+  after 10 minutes), unless both `OGN_FILTER_LAT` and `OGN_FILTER_LON` are
+  set, which switch it to a circle of `OGN_FILTER_RADIUS_KM` (default 350)
+  around that point.
 - `NMS_CLIENT_ID` / `NMS_CLIENT_SECRET` — optional, enables NOTAM lookup
   via the FAA's NOTAM Management Service (NMS-API). **No self-service
   signup** — request credentials by emailing 7-AWA-NAIMES@faa.gov or
