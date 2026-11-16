@@ -735,14 +735,6 @@ function MapScreenForCountry() {
     setCeilingEscalatedMsg(`Ceiling raised to ${newCeiling.toLocaleString()} ft`)
   }, [activePosition, bestAltFt, settings.airspaceCeilingFt, flyingActive])
 
-  const trafficStore = useTraffic({
-    enabled:  layers.traffic && mapReady && appActive,
-    ownAltFt: positionForAlerts?.altFt ?? null,
-    vertFilterFt: settings.trafficVertFilterFt,
-    ownLat:   activePosition?.lat   ?? null,
-    ownLon:   activePosition?.lng   ?? null,
-  })
-
   // Regional (FIR-wide) NOTAMs -- restricted/danger areas, navaid outages,
   // military notices not tied to any single airport. Mirrors web's
   // MapView.tsx useRegionalNotams()/notam-circles source.
@@ -773,6 +765,15 @@ function MapScreenForCountry() {
     }),
     [selectedCountries, waypoints, notamPosLat, notamPosLng],
   )
+  const trafficStore = useTraffic({
+    enabled:  layers.traffic && mapReady && appActive,
+    ownAltFt: positionForAlerts?.altFt ?? null,
+    vertFilterFt: settings.trafficVertFilterFt,
+    ownLat:   activePosition?.lat   ?? null,
+    ownLon:   activePosition?.lng   ?? null,
+    regions:  notamRegions,
+  })
+
   const regionalNotamsAll = useRegionalNotams(authenticated && mapReady && appActive, notamRegions)
   const { vfrOnly: notamVfrOnly } = useNotamPrefs()
   const regionalNotams = React.useMemo(

@@ -37,6 +37,7 @@ import type { FeatureCollection, Feature, Point } from 'geojson'
 import { TRAFFIC_BASE } from '../config'
 import { authHeaders } from '../utils/authClient'
 import { selectTrafficIcon } from '../utils/trafficIcons'
+import { regionsParam } from '@open-vfr/shared/notamRegionScope'
 import { trafficOnGround, trafficAltitudeM } from '@open-vfr/shared/trafficState'
 
 // ── Types (mirrors server TrafficState) ───────────────────────────────────────
@@ -128,6 +129,8 @@ interface Options {
   vertFilterFt?: number
   ownLat?:   number | null
   ownLon?:   number | null
+  /** Region codes to fetch traffic for (selected + route + position, as for NOTAMs). */
+  regions?:  string[]
 }
 
 const EMPTY_TRAFFIC: FeatureCollection = { type: 'FeatureCollection', features: [] }
@@ -137,7 +140,8 @@ const EMPTY_TRAFFIC: FeatureCollection = { type: 'FeatureCollection', features: 
  * MapScreen state every change re-rendered the whole screen and the map (about 15 %
  * of the JS thread at idle). Only the traffic layer subscribes to it.
  */
-export function useTraffic({ enabled, ownAltFt, vertFilterFt = 0, ownLat = null, ownLon = null }: Options): ValueStore<FeatureCollection> {
+export function useTraffic({ enabled, ownAltFt, vertFilterFt = 0, ownLat = null, ownLon = null, regions }: Options): ValueStore<FeatureCollection> {
+  const regionsQuery = regions && regions.length > 0 ? regionsParam(regions) : ''
   const batchRef    = useRef<TrafficBatch | null>(null)
   // Device-clock unix seconds when batchRef's batch arrived: positions are
   // dead-reckoned on this clock, so server/device clock skew does not matter.
@@ -153,7 +157,7 @@ export function useTraffic({ enabled, ownAltFt, vertFilterFt = 0, ownLat = null,
   /** True when the server returned a batch built recently (live traffic). */
   const poll = useCallback(async (): Promise<boolean> => {
     try {
-      const r = await fetch(`${TRAFFIC_BASE}/api/traffic/latest`, { headers: await authHeaders() })
+      const r = await fetch(`${TRAFFIC_BASE}/api/traffic/latest${regionsQuery ? `?regions=${encodeURIComponent(regionsQuery)}` : ''}`, { headers: await authHeaders() })
       if (!r.ok) return false
       const data = await r.json() as TrafficBatch
       if (data.polledAt > 0) { batchRef.current = data; receivedAtRef.current = Date.now() / 1000 }
@@ -161,7 +165,7 @@ export function useTraffic({ enabled, ownAltFt, vertFilterFt = 0, ownLat = null,
       // device clock skew involved.
       return data.polledAt > 0 && data.fresh !== false
     } catch { return false /* server offline -- keep the last batch */ }
-  }, [])
+  }, [regionsQuery])
 
   useEffect(() => {
     if (!enabled) {

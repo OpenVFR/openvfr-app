@@ -1400,16 +1400,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
     return () => clearInterval(timer)
   }, [flyingMode, flownTrail, mapReady, liveTrack])
 
-  // ── ADS-B traffic (OpenSky Network via server SSE) ──────────────────────
-  const trafficEnabled = (visibility['traffic'] ?? false) && !!auth.user
-  const trafficTargets = useTraffic({
-    ownAltFt: gpsPosition?.altFt ?? null,
-    enabled:  trafficEnabled && mapReady,
-  })
-  // Ref so the map click handler (registered once) always sees latest targets.
-  const trafficTargetsRef = useRef(trafficTargets)
-  useEffect(() => { trafficTargetsRef.current = trafficTargets }, [trafficTargets])
-
   // ── Regional NOTAMs (FIR-wide, ad-hoc circles from coordinates+radius) ──
   // Fetched independent of the 'notamCircles' layer-visibility toggle --
   // that toggle only controls whether notam-circles/notam-polygons/
@@ -1439,6 +1429,19 @@ export default function MapView({ auth }: { auth: AuthState }) {
     }),
     [selectedRegions, routeWaypoints, notamPosLat, notamPosLng],
   )
+  // ── ADS-B traffic (OpenSky Network via server SSE) ──────────────────────
+  // The server streams only targets inside the regions asked for: the same
+  // set as the regional NOTAMs (selected + route + own position).
+  const trafficEnabled = (visibility['traffic'] ?? false) && !!auth.user
+  const trafficTargets = useTraffic({
+    ownAltFt: gpsPosition?.altFt ?? null,
+    enabled:  trafficEnabled && mapReady,
+    regions:  notamRegions,
+  })
+  // Ref so the map click handler (registered once) always sees latest targets.
+  const trafficTargetsRef = useRef(trafficTargets)
+  useEffect(() => { trafficTargetsRef.current = trafficTargets }, [trafficTargets])
+
   const regionalNotamsAll = useRegionalNotams(regionalNotamsEnabled && mapReady, notamRegions)
   const notamVfrOnly = useNotamVfrOnly()
   const regionalNotams = useMemo(

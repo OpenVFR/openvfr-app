@@ -554,12 +554,15 @@ app.get('/api/traffic/config', async (c) => {
 // clients which have no persistent connection of their own.
 app.get('/api/traffic/latest', async (c) => {
   if (!(await requireSession(c))) return c.json({ error: 'Authentication required.' }, 401)
-  touchActivity()
+  // `?regions=se,dk` as for /api/notam/regional; omitted = default region only.
+  const regions = parseRegionsParam(c.req.query('regions'))
+  if (regions && !Array.isArray(regions)) return c.json({ error: regions.error }, 400)
+  touchActivity(regions ?? null)
   // Up to 10 s for fresh data when the feeds were idle: the first poll after
   // a quiet period otherwise returned nothing usable (see getFreshBatch).
   // `fresh` (judged on the server's clock) tells the app whether to poll
   // again soon or at its normal interval.
-  const { batch, fresh } = await getFreshBatch(10_000)
+  const { batch, fresh } = await getFreshBatch(10_000, regions)
   if (!batch) return c.json({ polledAt: 0, states: [], fresh: false })
   return c.json({ ...batch, fresh })
 })
@@ -589,6 +592,10 @@ app.get('/api/traffic/stream', async (c) => {
   if (!trafficConfig.available && !trafficConfig.ognAvailable) {
     return c.json({ error: 'Traffic is not configured on this server.' }, 503)
   }
+  // `?regions=se,dk` as for /api/notam/regional: only targets inside those
+  // regions are streamed. Omitted = default region only.
+  const regions = parseRegionsParam(c.req.query('regions'))
+  if (regions && !Array.isArray(regions)) return c.json({ error: regions.error }, 400)
 
   const open = sseConnections.get(user.id) ?? 0
   if (open >= SSE_MAX_PER_USER) {
@@ -611,7 +618,7 @@ app.get('/api/traffic/stream', async (c) => {
     writer.write(enc.encode(`data: ${data}\n\n`)).catch(() => cleanup())
   }
 
-  const unregister = registerClient(write)
+  const unregister = registerClient(write, regions)
 
   // Heartbeat keeps nginx / intermediary proxies from closing the connection.
   const heartbeatInterval = setInterval(() => {

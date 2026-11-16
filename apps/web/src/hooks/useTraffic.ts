@@ -19,6 +19,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { API_BASE_URL } from '../utils/env'
+import { regionsParam } from '@open-vfr/shared/notamRegionScope'
 import { trafficOnGround, trafficAltitudeM } from '@open-vfr/shared/trafficState'
 
 // ── Types exported to consumers ───────────────────────────────────────────────
@@ -168,10 +169,13 @@ interface UseTrafficOptions {
   ownAltFt?: number | null
   /** Whether traffic should be active (e.g. layer toggle). Disconnects SSE when false. */
   enabled?: boolean
+  /** Region codes to stream traffic for (selected + route + position, as for NOTAMs). Reconnects when the set changes. */
+  regions?: string[]
 }
 
 export function useTraffic(opts: UseTrafficOptions = {}): TrafficTarget[] {
-  const { ownAltFt = null, enabled = true } = opts
+  const { ownAltFt = null, enabled = true, regions } = opts
+  const regionsQuery = regions && regions.length > 0 ? regionsParam(regions) : ''
 
   // Ref so dead-reckoning loop always sees latest ownAlt without re-running effect
   const ownAltRef = useRef(ownAltFt)
@@ -231,7 +235,7 @@ export function useTraffic(opts: UseTrafficOptions = {}): TrafficTarget[] {
         // 401s (silently, same as above -- EventSource surfaces this via
         // onerror, which this code already treats as "stay silent" for the
         // CONNECTING-state auto-reconnect case).
-        evtSource = new EventSource(`${API_BASE_URL}/api/traffic/stream`, { withCredentials: true })
+        evtSource = new EventSource(`${API_BASE_URL}/api/traffic/stream${regionsQuery ? `?regions=${encodeURIComponent(regionsQuery)}` : ''}`, { withCredentials: true })
         resetWatchdog()
 
         evtSource.onmessage = (ev) => {
@@ -296,7 +300,7 @@ export function useTraffic(opts: UseTrafficOptions = {}): TrafficTarget[] {
       storeRef.current.clear()
       setTargets([])
     }
-  }, [enabled])
+  }, [enabled, regionsQuery])
 
   return targets
 }

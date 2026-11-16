@@ -15,7 +15,7 @@
  *    one long-lived TCP connection that the server holds open and the
  *    network pushes position reports down as they happen.
  *  - A server-side geographic filter is baked into the login line itself
- *    (`filter a/north/west/south/east`, the OPENSKY_BBOX area, or
+ *    (one `a/north/west/south/east` term per region consumers look at, or
  *    `filter r/lat/lon/radius_km` when overridden) so aprs.glidernet.org
  *    only sends packets for the configured region — no full-network firehose, no
  *    client-side geo filtering needed.
@@ -34,7 +34,7 @@
  * Env vars (all optional):
  *   OGN_ENABLED            'false' to disable entirely (default: enabled)
  *   OGN_FILTER_LAT/LON     APRS-IS circle filter centre. Unset (default): the
- *                          whole OPENSKY_BBOX rectangle is used instead.
+ *                          per-region area terms are used instead.
  *   OGN_FILTER_RADIUS_KM   circle radius, km (default 350; only used with
  *                          OGN_FILTER_LAT/LON)
  *   OGN_APRS_HOST/PORT     APRS-IS server (default: aprs.glidernet.org:14580)
@@ -57,7 +57,8 @@
  */
 
 import net from 'node:net'
-import { BBOX, hasActiveConsumers, onConsumerActivity, setOgnConnected, updateOgnState, pruneAndBroadcastOgn, type TrafficState } from './traffic'
+import { boxesFor } from './trafficRegions'
+import { activeRegionCodes, scopeCodes, hasActiveConsumers, onConsumerActivity, setOgnConnected, updateOgnState, pruneAndBroadcastOgn, type TrafficState } from './traffic'
 import { startDdbPrivacyRefresh, isTrackingOptedOut } from './ognDdbPrivacy'
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -70,8 +71,7 @@ const APRS_PORT = parseInt(process.env['OGN_APRS_PORT'] ?? '14580', 10)
 /**
  * APRS-IS server-side filter for the login line. Exported for tests.
  *
- * Default: an area filter covering the same rectangle as OPENSKY_BBOX, so
- * both feeds see the same region. This used to be a 350 km circle around
+ * Area filter for one box. This used to be a 350 km circle around
  * the bbox centre, which for the default Sweden box (55-69.5 N) only
  * reached ~59-65 N: OGN traffic (FLARM gliders and tow planes, and ADS-B
  * that OGN ground receivers hear at low level near airfields) in the whole
@@ -94,7 +94,31 @@ export function ognFilter(
   return `a/${latMax}/${lonMin}/${latMin}/${lonMax}`
 }
 
-const FILTER = ognFilter(BBOX, process.env)
+/**
+ * Filter for the regions consumers currently look at: one `a/` area term per
+ * region (terms are space-separated and OR together), not one rectangle over
+ * all of them -- SE+AT must not pull in DE/CZ/PL. OGN_FILTER_LAT/LON still
+ * force a circle. Exported for tests.
+ */
+export function ognFilterForRegions(
+  codes: readonly string[],
+  env: Record<string, string | undefined>,
+): string {
+  const boxes = boxesFor(codes)
+  if (boxes.length === 0) return ognFilter([0, 0, 0, 0], env)
+  return boxes.map(b => ognFilter(b as [number, number, number, number], env)).filter((t, i, a) => a.indexOf(t) === i).join(' ')
+}
+
+/** Filter wanted right now (active consumers' regions, default region when none yet). */
+function currentFilter(): string {
+  const codes = activeRegionCodes()
+  return ognFilterForRegions(codes.length > 0 ? codes : scopeCodes(null), process.env)
+}
+/** Filter of the open socket. */
+let _socketFilter = ''
+let _lastConnectAt = 0
+/** Min time between filter-change reconnects. */
+const FILTER_RECONNECT_MIN_MS = 10_000
 
 /** How stale (seconds) an OGN target can be before it's pruned from the merged batch. Shorter than OpenSky's 180s STALE_S since OGN targets update far more frequently (every few seconds vs. OpenSky's ~65s poll). */
 const OGN_STALE_S = 120
@@ -253,7 +277,10 @@ let _broadcastTimer: ReturnType<typeof setInterval> | null = null
 function connect(): void {
   if (_socket || !ENABLED) return
 
-  console.log(`[ogn] Connecting to ${APRS_HOST}:${APRS_PORT} (filter ${FILTER})`)
+  const filter = currentFilter()
+  _socketFilter = filter
+  _lastConnectAt = Date.now()
+  console.log(`[ogn] Connecting to ${APRS_HOST}:${APRS_PORT} (filter ${filter})`)
   const socket = net.createConnection({ host: APRS_HOST, port: APRS_PORT })
   _socket = socket
   _lineBuf = ''
@@ -262,7 +289,7 @@ function connect(): void {
     // Unauthenticated (pass -1) read-only login — OGN's APRS-IS is free/open,
     // no account needed. Callsign just needs to be a plausible-looking APRS
     // ident; doesn't need to be registered.
-    const login = `user OPENVFR pass -1 vers openvfr 1.0 filter ${FILTER}\r\n`
+    const login = `user OPENVFR pass -1 vers openvfr 1.0 filter ${filter}\r\n`
     socket.write(login)
     setOgnConnected(true)
     console.log('[ogn] Connected, login sent')
@@ -306,6 +333,19 @@ function connect(): void {
   })
 }
 
+/** The regions consumers look at changed: reconnect with the new filter (APRS-IS filters are set at login). */
+function refreshFilter(): void {
+  if (!_socket || _reconnectTimer) return
+  if (currentFilter() === _socketFilter) return
+  if (Date.now() - _lastConnectAt < FILTER_RECONNECT_MIN_MS) return  // next idle tick retries
+  console.log('[ogn] Consumer regions changed — reconnecting with new filter')
+  const old = _socket
+  _socket = null
+  setOgnConnected(false)
+  old.destroy()
+  connect()
+}
+
 function disconnect(): void {
   if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null }
   if (_socket) {
@@ -330,16 +370,16 @@ export function startOgnRelay(): void {
     return
   }
   startDdbPrivacyRefresh()
-  console.log(`[ogn] Relay ready — will connect on first consumer activity (idle-gated), filter ${FILTER}`)
+  console.log(`[ogn] Relay ready — will connect on first consumer activity (idle-gated), filter ${currentFilter()}`)
 
   _idleCheckTimer = setInterval(() => {
-    if (hasActiveConsumers()) connect()
+    if (hasActiveConsumers()) { connect(); refreshFilter() }
     else disconnect()
   }, OGN_IDLE_CHECK_MS)
   // Connect on the first consumer request instead of the next idle-watcher
   // tick. connect() is a no-op while a socket is open; while a reconnect
   // after an error is pending, leave it to that timer.
-  onConsumerActivity(() => { if (!_reconnectTimer) connect() })
+  onConsumerActivity(() => { if (!_reconnectTimer) { connect(); refreshFilter() } })
 
   _broadcastTimer = setInterval(() => {
     if (_socket) pruneAndBroadcastOgn(OGN_STALE_S)

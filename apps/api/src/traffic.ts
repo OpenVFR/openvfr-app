@@ -5,10 +5,15 @@
  *
  * Design:
  *  - One server-side OAuth2 token (client_credentials flow) shared globally.
- *  - One bounding-box poll per OPENSKY_POLL_INTERVAL_S (default 65 s) for
- *    the whole configured region — credit cost 3–4/call, ONE call serves any
+ *  - One bounding-box poll per OPENSKY_POLL_INTERVAL_S for the whole of
+ *    Europe (default box, see below) — credit cost 4/call, ONE call serves any
  *    number of connected clients (broadcast fans out, does not multiply calls).
- *  - All connected browser SSE clients receive the same batch update.
+ *    The polled batch is pruned to the known countries' boxes (dead space
+ *    between them dropped).
+ *  - Each client names the regions it works in (`?regions=se,dk`, see
+ *    trafficRegions.ts) and gets only the targets inside them; the payload is
+ *    serialised once per distinct region set. No `regions` = the default
+ *    region only (clients predating the parameter only had Sweden's data).
  *  - Clients dead-reckon positions at 1 s intervals between polls.
  *
  *  - IDLE GATING: the poll loop only runs while at least one consumer is
@@ -23,7 +28,7 @@
  * Required env vars (optional — traffic disabled if unset):
  *   OPENSKY_CLIENT_ID      OAuth2 client ID from opensky-network.org account
  *   OPENSKY_CLIENT_SECRET  OAuth2 client secret
- *   OPENSKY_BBOX           lat_min,lon_min,lat_max,lon_max  (default: Sweden)
+ *   OPENSKY_BBOX           lat_min,lon_min,lat_max,lon_max  (default: Europe, 34,-12,72,45)
  *   OPENSKY_POLL_INTERVAL_S  seconds between polls — explicit override.
  *                            If unset, computed automatically from
  *                            OPENSKY_DAILY_CREDITS and the bbox credit cost
@@ -39,10 +44,10 @@
  *                          fresher traffic instead of leaving it unused.
  *
  * Credit math (auto-computed, not hardcoded — see computeDefaultIntervalS()):
- *   Sweden bbox ≈ 182 sq° → 3 credits/call
- *   Full-Europe bbox ≈ 4,200 sq° → 4 credits/call
- *   4,000 credits/day ÷ 3/call → 1,333 calls/day → ~65 s interval
- *   8,000 credits/day (1 feeder) ÷ 3/call → 2,667 calls/day → ~32 s interval
+ *   Anything above 400 sq° (the Europe default ≈ 2,200 sq°) → 4 credits/call,
+ *   so a bigger box costs nothing extra: poll all of Europe once.
+ *   4,000 credits/day ÷ 4/call → 1,000 calls/day → ~89 s interval
+ *   8,000 credits/day (1 feeder) ÷ 4/call → 2,000 calls/day → ~45 s interval
  *   (idle gating above means actual usage is normally far below this ceiling)
  *
  * OpenSky state vector index reference (array positions):
@@ -64,6 +69,9 @@
  *  15  spi            boolean
  *  16  position_source int
  */
+
+import { DEFAULT_REGION_CODES } from '@open-vfr/shared/regions'
+import { ALL_BOXES, boxesFor, filterBatch, inAnyBox, regionKey } from './trafficRegions'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -144,13 +152,10 @@ function parseBbox(raw: string): [number, number, number, number] {
   if (parts.length === 4 && parts.every(isFinite)) {
     return parts as [number, number, number, number]
   }
-  // Default: Sweden bounding box (approx 182 sq°)
-  return [55.0, 10.0, 69.5, 24.5]
+  // Default: Europe (approx 2,200 sq°, 4 credits/call whatever the size)
+  return [34.0, -12.0, 72.0, 45.0]
 }
 
-// Exported: ognTraffic.ts derives its default APRS-IS filter centre/radius
-// from this same region instead of duplicating a second bbox config -- one
-// area covers both feeds unless OGN_FILTER_LAT/LON/RADIUS_KM overrides it.
 export const BBOX   = parseBbox(process.env['OPENSKY_BBOX'] ?? '')
 
 /** Credits per /states/all call: area(sq deg) <= 25 -> 1, <= 100 -> 2, <= 400 -> 3, else 4. */
@@ -235,21 +240,53 @@ async function getToken(): Promise<string> {
 
 type SseWriter = (data: string) => void
 
-const _clients = new Set<SseWriter>()
+/** Open SSE clients -> region-set key (trafficRegions.regionKey). */
+const _clients = new Map<SseWriter, string>()
+/** Region-set key -> last /latest request (epoch ms): native has no open connection. */
+const _latestKeys = new Map<string, number>()
 
-export function registerClient(write: SseWriter): () => void {
-  _clients.add(write)
+/** Region codes of a request: validated, or the default region when absent. */
+export function scopeCodes(regions: string[] | null | undefined): string[] {
+  const codes = regions && regions.length > 0 ? regions : [...DEFAULT_REGION_CODES]
+  return regionKey(codes).split(',').filter(Boolean)
+}
+
+/**
+ * Union of the region codes any active consumer asked for (open SSE streams,
+ * /latest requests within IDLE_TIMEOUT_MS). ognTraffic.ts builds its APRS-IS
+ * filter from it, so the OGN firehose only covers where someone is looking.
+ */
+export function activeRegionCodes(): string[] {
+  const now = Date.now()
+  const out = new Set<string>()
+  for (const key of _clients.values()) for (const c of key.split(',')) if (c) out.add(c)
+  for (const [key, at] of _latestKeys) {
+    if (now - at >= IDLE_TIMEOUT_MS) { _latestKeys.delete(key); continue }
+    for (const c of key.split(',')) if (c) out.add(c)
+  }
+  return [...out].sort()
+}
+
+export function registerClient(write: SseWriter, regions?: string[] | null): () => void {
+  const key = regionKey(scopeCodes(regions))
+  _clients.set(write, key)
   touchActivity()
   // Immediately send the latest batch if we have one
   if (_lastBatch) {
-    try { write(JSON.stringify(_lastBatch)) } catch { /* client gone */ }
+    try { write(JSON.stringify(filterBatch(_lastBatch, boxesFor(key.split(','))))) } catch { /* client gone */ }
   }
   return () => { _clients.delete(write) }
 }
 
 function broadcast(batch: TrafficBatch): void {
-  const payload = JSON.stringify(batch)
-  for (const write of _clients) {
+  // Serialise once per distinct region set, not once per client.
+  const payloads = new Map<string, string>()
+  for (const [write, key] of _clients) {
+    let payload = payloads.get(key)
+    if (payload === undefined) {
+      payload = JSON.stringify(filterBatch(batch, boxesFor(key.split(','))))
+      payloads.set(key, payload)
+    }
     try { write(payload) } catch { _clients.delete(write) }
   }
 }
@@ -271,8 +308,9 @@ let _lastActivityAt = 0
 
 const _activityListeners: (() => void)[] = []
 
-export function touchActivity(): void {
+export function touchActivity(regions?: string[] | null): void {
   _lastActivityAt = Date.now()
+  if (regions !== undefined) _latestKeys.set(regionKey(scopeCodes(regions)), _lastActivityAt)
   ensurePolling()
   for (const fn of _activityListeners) fn()
 }
@@ -347,8 +385,9 @@ function settleWaiters(): void {
  * OpenSky failing / backing off, and OGN disabled). Woken by the batch
  * updates, no polling loop.
  */
-export function getFreshBatch(maxWaitMs: number): Promise<{ batch: TrafficBatch | null; fresh: boolean }> {
-  const answer = () => ({ batch: _lastBatch, fresh: batchIsFresh(_lastBatch) })
+export function getFreshBatch(maxWaitMs: number, regions?: string[] | null): Promise<{ batch: TrafficBatch | null; fresh: boolean }> {
+  const boxes = boxesFor(scopeCodes(regions))
+  const answer = () => ({ batch: _lastBatch ? filterBatch(_lastBatch, boxes) : null, fresh: batchIsFresh(_lastBatch) })
   if (batchIsFresh(_lastBatch) || !anyFeedCanProduce()) return Promise.resolve(answer())
   return new Promise((resolve) => {
     const done = () => { clearTimeout(timer); _freshWaiters.delete(done); resolve(answer()) }
@@ -497,11 +536,12 @@ async function poll(): Promise<number> {
         source:      'opensky' as const,
       }))
 
-    _openskyStates = states
+    // Drop the rectangle's dead space (sea, countries we have no data for).
+    _openskyStates = states.filter(st => inAnyBox(st.lat, st.lon, ALL_BOXES))
     _openskyOkAt = Math.floor(Date.now() / 1000)
     _openskyBlockedUntil = 0
     recomputeAndBroadcast()
-    console.log(`[traffic] Polled ${states.length} OpenSky targets (+${_ognStates.size} OGN), broadcast to ${_clients.size} clients`)
+    console.log(`[traffic] Polled ${states.length} OpenSky targets (${_openskyStates.length} kept) (+${_ognStates.size} OGN), broadcast to ${_clients.size} clients`)
     return INTERVAL_S * 1000
 
   } catch (err) {

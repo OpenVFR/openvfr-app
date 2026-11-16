@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseLine, ognFilter } from './ognTraffic.js'
+import { parseLine, ognFilter, ognFilterForRegions } from './ognTraffic.js'
+import { filterBatch, boxesFor, inAnyBox, regionKey, ALL_BOXES } from './trafficRegions.js'
 import { mergeTrafficStates, getFreshBatch, batchIsFresh, type TrafficState } from './traffic.js'
 
 const NOW = 1_800_000_000
@@ -92,4 +93,29 @@ test('getFreshBatch: with nothing fresh it answers by its deadline, not fresh', 
   const r = await getFreshBatch(50)
   assert.equal(r.fresh, false)
   assert.ok(Date.now() - t0 < 1000)
+})
+
+test('OGN filter per region: one area term each, no union rectangle', () => {
+  const f = ognFilterForRegions(['se', 'at'], {})
+  const terms = f.split(' ')
+  assert.equal(terms.length, 2)
+  assert.ok(terms.every(t => t.startsWith('a/')))
+  assert.equal(ognFilterForRegions(['zz'], {}).startsWith('a/'), true)
+  assert.equal(ognFilterForRegions(['se', 'at'], { OGN_FILTER_LAT: '57', OGN_FILTER_LON: '12' }), 'r/57/12/350')
+})
+
+test('regionKey: sorted, unique, unknown dropped', () => {
+  assert.equal(regionKey(['se', 'dk', 'se', 'zz']), 'dk,se')
+})
+
+test('filterBatch keeps targets inside the regions only', () => {
+  const stockholm = state({ icao24: 'a', lat: 59.3, lon: 18.0 })
+  const vienna = state({ icao24: 'b', lat: 48.2, lon: 16.4 })
+  const sea = state({ icao24: 'c', lat: 40, lon: -25 })
+  const batch = { polledAt: 1, states: [stockholm, vienna, sea] }
+  assert.deepEqual(filterBatch(batch, boxesFor(['se'])).states.map(s => s.icao24), ['a'])
+  assert.deepEqual(filterBatch(batch, boxesFor(['se', 'at'])).states.map(s => s.icao24), ['a', 'b'])
+  assert.equal(inAnyBox(sea.lat, sea.lon, ALL_BOXES), false)
+  assert.equal(filterBatch(batch, ALL_BOXES).states.length, 2)
+  assert.equal(inAnyBox(null, 1, ALL_BOXES), false)
 })
