@@ -8,6 +8,7 @@
  * Go Flying       → GPS tracking + screen keep-awake
  */
 
+import { effectiveHeight, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { View, TouchableOpacity, Text, Alert, TextInput, ScrollView, useWindowDimensions, Linking } from 'react-native'
 import { useContentInsets } from '../hooks/useContentInsets'
@@ -1176,7 +1177,11 @@ function MapScreenForCountry() {
             subtitle: String(p.kind ?? 'Obstacle').replace(/_/g, ' '),
             rows: [
               p.elevation_ft != null ? { label: 'Elevation', value: `${p.elevation_ft} ft AMSL` } : null,
-              p.height_m     != null ? { label: 'Height',    value: `${Math.round((p.height_m as number) * 3.281)} ft AGL` } : null,
+              // Unknown height: the estimate the MSA and the alerts use, marked as one (never "0 ft AGL").
+              (() => {
+                const h = effectiveHeight(String(p.kind ?? ''), Number(p.height_m ?? 0), Number(p.height_est_m ?? 0))
+                return { label: h.estimated ? 'Height (est.)' : 'Height', value: `${h.estimated ? '~' : ''}${Math.round(h.heightM * FT_PER_M)} ft AGL` }
+              })(),
             ].filter(Boolean) as { label: string; value: string }[],
             canAddToRoute: false,
           })

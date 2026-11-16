@@ -1,3 +1,4 @@
+import { effectiveHeight, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
 import type React from 'react'
 import RouteActionButton, { type RouteActionProps } from './RouteActionButton'
 import css from './FeaturePopup.module.css'
@@ -33,6 +34,7 @@ export interface ObstacleFeature {
   name: string
   elevation_ft: number
   height_m: number      // AGL height in metres; 0 if unknown
+  height_est_m?: number // the data's own estimate when height_m is unknown (e.g. 45 m for a Danish household turbine)
 }
 
 export interface LandmarkFeature {
@@ -207,6 +209,7 @@ function ObstacleHeader({ f }: { f: ObstacleFeature }) {
 }
 
 function ObstacleBody({ f }: { f: ObstacleFeature }) {
+  const h = effectiveHeight(f.obstacleKind, f.height_m, f.height_est_m)
   return (
     <div className={css.body}>
       {f.name && <div className={css.name}>{f.name}</div>}
@@ -214,14 +217,13 @@ function ObstacleBody({ f }: { f: ObstacleFeature }) {
         <span className={css.label}>Elevation AMSL</span>
         <span className={css.value}>{f.elevation_ft} ft</span>
       </div>
-      {f.height_m > 0 && (
-        <div className={css.row}>
-          <span className={css.label}>Height AGL</span>
-          <span className={css.value}>
-            {f.height_m} m ({Math.round(f.height_m * 3.28084)} ft)
-          </span>
-        </div>
-      )}
+      {/* An unknown height is shown as the estimate the MSA and the alerts use, marked as such (not left out: the pilot would read it as "no obstacle height"). */}
+      <div className={css.row}>
+        <span className={css.label}>{h.estimated ? 'Height AGL (est.)' : 'Height AGL'}</span>
+        <span className={css.value}>
+          {h.estimated ? '~' : ''}{Math.round(h.heightM)} m ({Math.round(h.heightM * FT_PER_M)} ft)
+        </span>
+      </div>
       <div className={css.source}>© openAIP (CC BY-NC 4.0)</div>
     </div>
   )

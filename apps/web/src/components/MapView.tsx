@@ -3835,6 +3835,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
                 name:         String(fp.name      ?? ''),
                 elevation_ft: Number(fp.elevation_ft ?? 0),
                 height_m:     Number(fp.height_m     ?? 0),
+                height_est_m: Number(fp.height_est_m ?? 0) || 0,
               },
             })
           }
