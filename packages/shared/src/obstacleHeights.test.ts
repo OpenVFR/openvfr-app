@@ -10,6 +10,11 @@ describe('effectiveHeight', () => {
     expect(effectiveHeight('mast', undefined).estimated).toBe(true)
     expect(effectiveHeight('something_new', null)).toEqual({ heightM: 60, estimated: true })
   })
+  it('prefers the data\'s own estimate over the per-kind one, still flagged', () => {
+    expect(effectiveHeight('wind_turbine', 0, 45)).toEqual({ heightM: 45, estimated: true })
+    expect(effectiveHeight('wind_turbine', 150, 45)).toEqual({ heightM: 150, estimated: false })
+    expect(effectiveHeight('wind_turbine', 0, 0)).toEqual({ heightM: ESTIMATED_HEIGHT_M.wind_turbine, estimated: true })
+  })
 })
 
 describe('obstacleTipsForMsa', () => {

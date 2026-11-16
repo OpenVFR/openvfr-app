@@ -55,7 +55,7 @@ export function buildObstructionPoints(
       const rawH = p['height_m'] == null ? null : Number(p['height_m'])
       const kind = String(p['kind'] ?? 'other')
       const name = String(p['name'] ?? '').trim()
-      const h = effectiveHeight(kind, rawH)
+      const h = effectiveHeight(kind, rawH, p['height_est_m'] == null ? null : Number(p['height_est_m']))
       pts.push({
         key: `${prefix}-${i}`, lat, lng, kind, name, elevFt: elevFt ?? 0,
         tipFt: (elevFt ?? 0) + Math.round(h.heightM * FT_PER_M), groundKnown,

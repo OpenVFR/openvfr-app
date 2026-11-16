@@ -8,6 +8,10 @@
  * an estimate (dashed outline on the chart) and use it as a conservative
  * floor.
  *
+ * The data pipeline may ship its own per-feature estimate (`height_est_m`, e.g.
+ * 45 m for a Danish household turbine, the tallest register turbine of the park
+ * nearby): it replaces the per-kind figure and is still marked as an estimate.
+ *
  * Estimates are the medians of the known heights in the Swedish data, rounded,
  * with 91 m (300 ft) for generic masts. Wind turbines: 200 m tip (new ones are 230-290 m, but the existing fleet is mixed, from ~100 m up;
  * the few recorded heights are mostly old, shorter turbines).
@@ -30,10 +34,12 @@ export const FT_PER_M = 3.28084
 
 export type EffectiveHeight = { heightM: number; estimated: boolean }
 
-/** The height to use for an obstacle/landmark: the known one, else the estimate. */
-export function effectiveHeight(kind: string, knownHeightM: number | null | undefined): EffectiveHeight {
+/** The height to use for an obstacle/landmark: the known one, else the data's own estimate, else the per-kind estimate. */
+export function effectiveHeight(kind: string, knownHeightM: number | null | undefined, dataEstimateM?: number | null): EffectiveHeight {
   const h = Number(knownHeightM)
   if (Number.isFinite(h) && h > 0) return { heightM: h, estimated: false }
+  const e = Number(dataEstimateM)
+  if (Number.isFinite(e) && e > 0) return { heightM: e, estimated: true }
   return { heightM: ESTIMATED_HEIGHT_M[kind] ?? DEFAULT_ESTIMATED_HEIGHT_M, estimated: true }
 }
 
@@ -51,7 +57,7 @@ export function limitingObstacleLabel(_kind: string, name: string | undefined, t
   return `${base} ${tipFt.toLocaleString('en-US')} ft${estimated ? ' (est.)' : ''}`
 }
 
-type ObstacleLike = { distNm: number; kind: string; elevationFt: number; heightM: number }
+type ObstacleLike = { distNm: number; kind: string; elevationFt: number; heightM: number; heightEstM?: number }
 type LandmarkLike = { distNm: number; kind: string; heightM?: number }
 
 /**
@@ -73,7 +79,7 @@ export function obstacleTipsForMsa(
   const out: { distNm: number; elevationFt: number; estimated: boolean }[] = []
   for (const o of obstacles) {
     const base = Math.max(o.elevationFt, terrainFt(o.distNm), 0)
-    const h = effectiveHeight(o.kind, o.heightM)
+    const h = effectiveHeight(o.kind, o.heightM, o.heightEstM)
     out.push({ distNm: o.distNm, elevationFt: Math.round(base + h.heightM * FT_PER_M), estimated: h.estimated })
   }
   for (const l of landmarks) {

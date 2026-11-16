@@ -1608,7 +1608,7 @@ export const VerticalProfile = React.memo(function VerticalProfile({
       const baseFt = Math.max(o.elevationFt, terrainAt(terrainPts, o.distNm))
       // Unknown height: the per-kind estimate (dashed, and the same figure the
       // MSA uses, see obstacleHeights.ts).
-      const eh = effectiveHeight(o.kind, o.heightM)
+      const eh = effectiveHeight(o.kind, o.heightM, o.heightEstM)
       const tipFt = Math.round(baseFt + eh.heightM * FT_PER_M)
       const limiting = isLimitingObstacle(tipFt, margins.obstacleClearanceFt, getMsa(o.distNm))
       // Only what is near the route, or what sets the MSA (see OBSTACLE_DISPLAY_NM).

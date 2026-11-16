@@ -114,6 +114,8 @@ export type ObstacleMarker = {
    *  is this (or the terrain) plus the height: see obstacleHeights.ts. */
   elevationFt: number
   heightM:     number   // AGL height (0 if unknown)
+  /** The data's own estimate when heightM is unknown (`height_est_m`), else 0. */
+  heightEstM?: number
   kind:        string   // 'wind_turbine' | 'tower' | 'chimney' | …
   name:        string
 }
@@ -348,6 +350,7 @@ interface ObstacleProps {
   name:         string
   elevation_ft: number
   height_m:     number
+  height_est_m?: number
 }
 
 interface LandmarkProps {
@@ -611,6 +614,7 @@ export function buildVirtualRadarProfile(
       lateralNm:   Math.round(lateralKm * 0.539957 * 10) / 10,
       elevationFt: Number(p.elevation_ft ?? 0),
       heightM:     Number(p.height_m     ?? 0),
+      heightEstM:  Number(p.height_est_m ?? 0) || 0,
       kind:        String(p.kind         ?? ''),
       name:        String(p.name         ?? ''),
     })
