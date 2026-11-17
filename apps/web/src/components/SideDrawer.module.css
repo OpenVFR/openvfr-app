@@ -88,8 +88,17 @@
    are folded or long), an open section's header gets an accent edge and
    stays pinned at the top while its content scrolls under it. */
 .section {
-  border-bottom: 1px solid var(--border-strong);
+  /* Each section is its own outlined card with a gap above it (same look as
+     the Settings groups), so it is clear in every theme where one ends and
+     the next begins. overflow:clip (not hidden) keeps the sticky header working. */
+  margin: 8px 8px 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  overflow: clip;
 }
+.section:last-child { margin-bottom: 8px; }
+/* Open: the accent edge runs down the whole body, not just the header */
+.section:has(> .sectionBody) { box-shadow: inset 3px 0 0 var(--accent-blue); }
 
 .sectionHeader {
   width: 100%;
@@ -98,7 +107,7 @@
   align-items: center;
   padding: 9px 12px 9px 9px;
   /* Opaque (tint over the pane colour): content scrolls under the pinned header. */
-  background: linear-gradient(var(--surface-active), var(--surface-active)), var(--surface-elevated);
+  background: linear-gradient(var(--surface-active), var(--surface-active)), linear-gradient(var(--surface-active), var(--surface-active)), var(--surface-elevated);
   border: none;
   border-left: 3px solid transparent;
   position: sticky;
@@ -114,14 +123,14 @@
   transition: color 0.15s;
   font-family: system-ui, sans-serif;
 }
-.sectionHeader:hover { color: var(--text-primary); background: linear-gradient(var(--surface-hover), var(--surface-hover)), linear-gradient(var(--surface-active), var(--surface-active)), var(--surface-elevated); }
+.sectionHeader:hover { color: var(--text-primary); background: linear-gradient(var(--surface-hover), var(--surface-hover)), linear-gradient(var(--surface-active), var(--surface-active)), linear-gradient(var(--surface-active), var(--surface-active)), var(--surface-elevated); }
 
 /* Open section: accent edge + full-strength title, and a line under the
    header so where its content starts is clear. */
 .section:has(> .sectionBody) > .sectionHeader {
   color: var(--text-primary);
   border-left-color: var(--accent-blue);
-  box-shadow: inset 0 -1px 0 var(--border-default);
+  box-shadow: inset 0 -1px 0 var(--border-strong);
 }
 
 .chevron {

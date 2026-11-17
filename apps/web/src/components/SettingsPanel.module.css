@@ -340,23 +340,40 @@
 
 /* Collapsible groups: the long settings list starts with the basics open and
    the rest folded away behind their titles. */
-.group { border-top: 1px solid var(--border-subtle); }
+.group {
+  /* Each group is its own card: outline + gap, so where one ends and the next
+     begins is clear in every theme (incl. high-contrast) when several are open. */
+  margin: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  overflow: hidden;
+}
 .groupTitle {
   cursor: pointer;
   list-style: none;
-  padding: 10px;
-  font-size: 12px;
-  font-weight: 600;
+  padding: 10px 10px 10px 12px;
+  font-size: 13px;
+  font-weight: 700;
   color: var(--text-primary, inherit);
+  background: linear-gradient(var(--surface-active), var(--surface-active)), linear-gradient(var(--surface-active), var(--surface-active)), var(--surface-elevated);
+  border-left: 4px solid transparent;
   display: flex;
   align-items: center;
   justify-content: space-between;
   user-select: none;
 }
+.groupTitle:hover { background: linear-gradient(var(--surface-hover), var(--surface-hover)), linear-gradient(var(--surface-active), var(--surface-active)), linear-gradient(var(--surface-active), var(--surface-active)), var(--surface-elevated); }
+.groupTitle:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
 .groupTitle::-webkit-details-marker { display: none; }
 .groupTitle::after { content: '\25B8'; color: var(--text-muted); }
-.group[open] > .groupTitle::after { content: '\25BE'; }
-.group[open] > .groupTitle { border-bottom: 1px solid var(--border-subtle); }
+.group[open] > .groupTitle::after { content: '\25BE'; color: var(--text-primary); }
+/* Open: accent bar on the title and a rail down the whole body */
+.group[open] > .groupTitle {
+  border-left-color: var(--accent-blue);
+  border-bottom: 1px solid var(--border-strong);
+}
+.group[open] { border-left: 0; box-shadow: inset 4px 0 0 var(--accent-blue); }
+.group[open] > .groupTitle { padding-left: 12px; }
 
 /* Supporter credit: club logo, with "Supported by" above the name (same layout as the native app) */
 .sponsor {
