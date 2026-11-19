@@ -55,8 +55,9 @@ them (from zoom 9, with more detail as you zoom in):
 - **Fly-in routes**: an arrival route a club draws on its own map (for
   example the way to join from the north) is drawn and switched like a
   circuit and labelled with its name.
-- **Noise-sensitive areas** and other areas to avoid, with the height they
-  apply below ("below 700 ft AMSL") when the source gives one. Glider,
+- **Noise-sensitive areas** and other areas to avoid. Tap an area for its
+  name, the height it applies below ("Avoid overflight below 700 ft AMSL")
+  when the source gives one, and the source; the map itself shows no heights. Glider,
   parachute and model-flying areas are drawn in their own colours.
 - **Reporting points** that the base map does not have, as the VFR waypoint
   triangle with their name, and **holding points** with the direction of

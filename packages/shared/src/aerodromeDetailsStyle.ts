@@ -208,7 +208,7 @@ export function buildDetailsMapData(
         ...f.properties,
         label: f.properties.kind !== 'circuit_leg' && f.properties.kind !== 'arrival_route' && f.properties.kind !== 'holding'
           && (f.geometry.type === 'Point' || AREA_KINDS.has(f.properties.kind as DetailKind) )
-          ? (mapAreaLabel(f.properties) ? [mapAreaLabel(f.properties), f.properties.pending ? '(unreviewed)' : null].filter(Boolean).join('\n') : '')
+          ? (mapAreaLabel(f.properties, false) ? [mapAreaLabel(f.properties, false), f.properties.pending ? '(unreviewed)' : null].filter(Boolean).join('\n') : '')
           : '',
         clabel: f.properties.kind === 'circuit_leg' || f.properties.kind === 'arrival_route' ? circuitLabel(f.properties.name) : '',
         // flat copies for the tap popup (a rendered feature returns nested values as JSON text)
@@ -234,12 +234,13 @@ const KIND_WORDS_IN_NAME = /^(noise[- ]sensitive( area)?|bullerk[aä]nsligt( omr
  * says it is an area and a tap says which kind, so the label need not repeat it; an unnamed one has no label at all. Other kinds
  * keep their kind in front of the name ("Glider area: Öresjö"), since a bare name there could be taken for a place.
  */
-export function mapAreaLabel(p: Pick<DetailProps, 'kind' | 'name' | 'floor' | 'ceiling'>): string {
+export function mapAreaLabel(p: Pick<DetailProps, 'kind' | 'name' | 'floor' | 'ceiling'>, withHeights = true): string {
   const kind = AREA_KIND_LABEL[p.kind]
   let name = p.name?.trim() ?? ''
   if (p.kind === 'noise_sensitive') name = name.replace(KIND_WORDS_IN_NAME, '').trim()
   const head = p.kind === 'noise_sensitive' ? name
     : kind && name && !name.toLowerCase().includes(kind.toLowerCase().split(' ')[0]!) ? `${kind}: ${name}` : (name || kind || '')
+  if (!withHeights && p.kind === 'noise_sensitive') return head          // the height is in the tap popup, not written on the map
   const below = p.kind === 'noise_sensitive' ? belowText(p.floor, p.ceiling) : null
   return [head, below ? `below ${below}` : formatLimits(p.floor, p.ceiling)].filter(Boolean).join('\n')
 }

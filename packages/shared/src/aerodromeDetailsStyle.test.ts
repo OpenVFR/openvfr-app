@@ -75,6 +75,8 @@ describe('mapAreaLabel', () => {
     const lim = { floor: { ref: 'AGL' as const, ft: 0 }, ceiling: { ref: 'AMSL' as const, ft: 2500 } }
     expect(mapAreaLabel({ kind: 'noise_sensitive', name: 'Kil', ...lim })).toBe('Kil\nbelow 2500 ft AMSL')
     expect(mapAreaLabel({ kind: 'noise_sensitive', name: null, ...lim })).toBe('below 2500 ft AMSL')
+    expect(mapAreaLabel({ kind: 'noise_sensitive', name: 'Kil', ...lim }, false)).toBe('Kil')           // the map itself shows no height
+    expect(mapAreaLabel({ kind: 'noise_sensitive', name: null, ...lim }, false)).toBe('')
     expect(belowText(lim.floor, lim.ceiling)).toBe('2500 ft AMSL')
     expect(belowText(null, { ref: 'UNL' })).toBeNull()
     expect(belowText({ ref: 'AMSL', ft: 1000 }, { ref: 'AMSL', ft: 2500 })).toBeNull()      // a band above the ground is not "below"
