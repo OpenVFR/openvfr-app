@@ -38,9 +38,13 @@ export default function AerodromeDetailsLayer({ map, circuitsVisible, holdingsVi
     if (src) { src.setData(fc as GeoJSON.FeatureCollection); return }
     const before = OVERLAY_BELOW_LAYERS.find(id => map.getLayer(id))
     map.addSource(SOURCE, { type: 'geojson', data: fc as GeoJSON.FeatureCollection })
+    // Reporting points sit above the landmark icons (a church is often the very spot a point is named after): below the
+    // traffic layers, else on top.
+    const aboveLandmarks = ['traffic-urgency-ring', 'traffic-symbols', 'wind-arrows-icon'].find(id => map.getLayer(id))
     for (const l of DETAIL_LAYERS) {
       map.addLayer({ id: l.id, type: l.type, source: SOURCE, minzoom: l.minzoom, filter: l.filter,
-        ...(l.layout ? { layout: l.layout } : {}), paint: l.paint } as maplibregl.AddLayerObject, before)
+        ...(l.layout ? { layout: l.layout } : {}), paint: l.paint } as maplibregl.AddLayerObject,
+      l.group === 'reportingPoints' ? aboveLandmarks : before)
     }
   }, [map, fc])
 
