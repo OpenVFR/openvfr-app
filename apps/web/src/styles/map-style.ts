@@ -11,7 +11,7 @@ import {
   RUNWAY_LABEL_DEFAULT_HALO,
 } from '@open-vfr/shared/runwayWind'
 import { TILES_BASE_URL } from '../utils/env'
-import { CIRCUIT_LAYER_IDS, HOLDING_ORBIT_LAYER } from '@open-vfr/shared/aerodromeDetailsStyle'
+import { CIRCUIT_LAYER_IDS, HOLDING_ORBIT_LAYER, REPORTING_POINT_LAYER_IDS } from '@open-vfr/shared/aerodromeDetailsStyle'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
 import { DEFAULT_REGION_CODE } from '@open-vfr/shared/regions'
 import { countryDatasetFile, countryArchiveFile, type CountryDataset } from '@open-vfr/shared/countryData'
@@ -562,7 +562,8 @@ export const LAYER_GROUPS: LayerGroup[] = [
     // VFR Reporting Points (RP) — non-mandatory. 104 points.
     label: 'VFR Waypoints',
     cssClass: 'groupWaypointsRP',
-    layerIds: ['waypoints-rp-icon', 'waypoints-rp-label'],
+    // + the reporting points of club maps and charts from the aerodrome details (added at runtime by AerodromeDetailsLayer)
+    layerIds: ['waypoints-rp-icon', 'waypoints-rp-label', ...REPORTING_POINT_LAYER_IDS],
     defaultOn: false,
     section: 'Navigation',
   },

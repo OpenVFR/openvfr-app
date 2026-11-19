@@ -19,7 +19,7 @@ function remove(map: maplibregl.Map) {
   if (map.getSource(SOURCE)) map.removeSource(SOURCE)
 }
 
-function apply(map: maplibregl.Map, visible: { circuits: boolean; holdings: boolean }, focus: CircuitFocus | null) {
+function apply(map: maplibregl.Map, visible: { circuits: boolean; holdings: boolean; reportingPoints: boolean }, focus: CircuitFocus | null) {
   for (const l of DETAIL_LAYERS) {
     if (!map.getLayer(l.id) || l.group === 'details') continue
     map.setLayoutProperty(l.id, 'visibility', visible[l.group] ? 'visible' : 'none')
@@ -27,8 +27,8 @@ function apply(map: maplibregl.Map, visible: { circuits: boolean; holdings: bool
   }
 }
 
-export default function AerodromeDetailsLayer({ map, circuitsVisible, holdingsVisible }:
-  { map: maplibregl.Map | null; circuitsVisible: boolean; holdingsVisible: boolean }) {
+export default function AerodromeDetailsLayer({ map, circuitsVisible, holdingsVisible, reportingPointsVisible }:
+  { map: maplibregl.Map | null; circuitsVisible: boolean; holdingsVisible: boolean; reportingPointsVisible: boolean }) {
   const fc = useAerodromeDetailsLayer(!!map)
   const focus = useCircuitFocus()
 
@@ -46,8 +46,8 @@ export default function AerodromeDetailsLayer({ map, circuitsVisible, holdingsVi
 
   // Layers-panel switches and runway focus; also right after the layers are first added.
   useEffect(() => {
-    if (map && fc) apply(map, { circuits: circuitsVisible, holdings: holdingsVisible }, focus)
-  }, [map, fc, circuitsVisible, holdingsVisible, focus])
+    if (map && fc) apply(map, { circuits: circuitsVisible, holdings: holdingsVisible, reportingPoints: reportingPointsVisible }, focus)
+  }, [map, fc, circuitsVisible, holdingsVisible, reportingPointsVisible, focus])
 
   useEffect(() => () => { if (map) remove(map) }, [map])
 

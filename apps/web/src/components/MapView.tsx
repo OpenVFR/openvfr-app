@@ -5188,7 +5188,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         <UnreviewedBanner />
         {chartsEnabled && mapReady && <ChartOverlay map={mapRef.current} />}
         {mapReady && <AerodromeDetailsLayer map={mapRef.current} circuitsVisible={visibility['aerodromeCircuits'] ?? true}
-          holdingsVisible={visibility['waypointsHold'] ?? true} />}
+          holdingsVisible={visibility['waypointsHold'] ?? true} reportingPointsVisible={visibility['waypointsRP'] ?? false} />}
         {chartsEnabled && <ChartViewer />}
         {toolbarHost && createPortal((() => {
           const flying = flyingMode !== 'off'

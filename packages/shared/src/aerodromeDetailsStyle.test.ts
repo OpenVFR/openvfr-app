@@ -106,6 +106,18 @@ describe('arrival routes', () => {
   })
 })
 
+describe('reporting points of a club map', () => {
+  it('are drawn as the VFR reporting-point triangle, in a group of their own, and not twice', () => {
+    const icon = DETAIL_LAYERS.find(l => l.id === 'ad-reporting-point-icon')!
+    expect(icon.group).toBe('reportingPoints')
+    expect(icon.layout?.['icon-image']).toBe('wp-rp')
+    expect(JSON.stringify(DETAIL_LAYERS.find(l => l.id === 'ad-details-point')!.filter)).toContain('reporting_point')      // not the plain dot as well
+    expect(JSON.stringify(DETAIL_LAYERS.find(l => l.id === 'ad-details-label')!.filter)).toContain('reporting_point')
+    expect(DETAIL_LAYERS.find(l => l.id === 'ad-reporting-point-label')!.group).toBe('reportingPoints')
+    expect(staticColorLayers().some(l => l.id === 'ad-reporting-point-icon')).toBe(true)                                  // native keeps it
+  })
+})
+
 describe('area labels on the map', () => {
   const area = (name: string | null, pending: boolean) => ({
     type: 'Feature' as const, geometry: { type: 'Polygon' as const, coordinates: [[[13, 55], [13.01, 55], [13.01, 55.01], [13, 55]]] },

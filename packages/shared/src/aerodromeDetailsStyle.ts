@@ -20,7 +20,7 @@ export type Expr = readonly unknown[]
 export interface DetailLayerSpec {
   id: string
   type: 'fill' | 'line' | 'symbol' | 'circle'
-  group: 'circuits' | 'holdings' | 'details'
+  group: 'circuits' | 'holdings' | 'reportingPoints' | 'details'
   minzoom: number
   filter: Expr
   layout?: Record<string, unknown>
@@ -56,6 +56,7 @@ const IS_AREA: Expr = ['in', ['get', 'kind'], ['literal', [...AREA_KINDS]]]
 const IS_CIRCUIT: Expr = ['in', ['get', 'kind'], ['literal', ['circuit_leg', 'arrival_route']]]
 const NOT_CIRCUIT: Expr = ['!', ['in', ['get', 'kind'], ['literal', ['circuit_leg', 'arrival_route']]]]
 const IS_HOLDING: Expr = ['==', ['get', 'kind'], 'holding']
+const IS_RP: Expr = ['==', ['get', 'kind'], 'reporting_point']
 const LINE: Expr = ['==', ['geometry-type'], 'LineString']
 const POLY: Expr = ['==', ['geometry-type'], 'Polygon']
 const POINT: Expr = ['==', ['geometry-type'], 'Point']
@@ -109,10 +110,18 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
       'line-opacity': ['case', ['get', 'pending'], 0.7, 1] } },
   // Extra reporting points and labels of areas and points (holding points: the base layer draws symbol and name)
   { id: 'ad-details-point', type: 'circle', group: 'details', minzoom: DETAILS_MIN_ZOOM,
-    filter: ['all', POINT, NOT_CIRCUIT, ['!', IS_HOLDING]],
+    filter: ['all', POINT, NOT_CIRCUIT, ['!', IS_HOLDING], ['!', IS_RP]],
     paint: { 'circle-radius': 4, 'circle-color': COLOR, 'circle-stroke-color': '#0b1220', 'circle-stroke-width': 1.2,
       'circle-opacity': ['case', ['get', 'pending'], 0.6, 1] } },
-  { id: 'ad-details-label', type: 'symbol', group: 'details', minzoom: 10, filter: ['!=', ['get', 'label'], ''],
+  // Reporting points of a club map / chart: the same outline triangle and name as the base layer's VFR reporting points (wp-rp), and
+  // switched with them (web "VFR Waypoints", native waypoints)
+  { id: 'ad-reporting-point-icon', type: 'symbol', group: 'reportingPoints', minzoom: 9, filter: ['all', POINT, IS_RP],
+    layout: { 'icon-image': 'wp-rp', 'icon-size': ['interpolate', ['linear'], ['zoom'], 9, 0.45, 12, 0.7], 'icon-allow-overlap': true },
+    paint: { 'icon-opacity': ['case', ['get', 'pending'], 0.6, 1] } },
+  { id: 'ad-reporting-point-label', type: 'symbol', group: 'reportingPoints', minzoom: 10, filter: ['all', POINT, IS_RP, ['!=', ['get', 'label'], '']],
+    layout: { 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Regular'], 'text-size': 11, 'text-anchor': 'top', 'text-offset': [0, 0.9] },
+    paint: { 'text-color': AREA_LABEL_COLOR, 'text-halo-color': HALO, 'text-halo-width': 1.8 } },
+  { id: 'ad-details-label', type: 'symbol', group: 'details', minzoom: 10, filter: ['all', ['!=', ['get', 'label'], ''], ['!', ['all', POINT, IS_RP]]],
     layout: { 'text-field': ['get', 'label'], 'text-font': CIRCUIT_LABEL_FONT, 'text-size': 12, 'text-max-width': 12,
       'text-offset': ['case', ['==', ['geometry-type'], 'Point'], ['literal', [0, 1.1]], ['literal', [0, 0]]],
       'text-anchor': ['case', ['==', ['geometry-type'], 'Point'], 'top', 'center'] },
@@ -123,7 +132,8 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
 const KINDS_OF_GROUP: Record<DetailLayerSpec['group'], DetailKind[]> = {
   circuits: ['circuit_leg', 'arrival_route'],
   holdings: ['holding'],
-  details: (Object.keys(DETAIL_KIND_COLOR) as DetailKind[]).filter(k => k !== 'circuit_leg' && k !== 'arrival_route' && k !== 'holding'),
+  reportingPoints: ['reporting_point'],
+  details: (Object.keys(DETAIL_KIND_COLOR) as DetailKind[]).filter(k => k !== 'circuit_leg' && k !== 'arrival_route' && k !== 'holding' && k !== 'reporting_point'),
 }
 
 /**
@@ -163,6 +173,7 @@ export const DETAIL_TAP_FILL_LAYERS = ['ad-details-fill'] as const
 
 export const CIRCUIT_LAYER_IDS = DETAIL_LAYERS.filter(l => l.group === 'circuits').map(l => l.id)
 export const HOLDING_ORBIT_LAYER = 'ad-holding-orbit'
+export const REPORTING_POINT_LAYER_IDS = DETAIL_LAYERS.filter(l => l.group === 'reportingPoints').map(l => l.id)
 
 /** A circuit layer's filter with the runway focus: at the focused aerodrome only circuits for that runway end
  *  (circuits without known runways, such as drawn club legs, stay). Other layers are returned unchanged. */

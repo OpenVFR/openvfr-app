@@ -1141,10 +1141,10 @@ function useAerodromeDetailsData(aerodromesData: string | GeoJSON.GeoJSON, dataT
   }, [details, aerodromesData, loadedAerodromes])
 }
 
-const AerodromeDetailsLayers = React.memo(function AerodromeDetailsLayers({ data, showCircuits, showHoldings }:
-  { data: GeoJSON.FeatureCollection; showCircuits: boolean; showHoldings: boolean }) {
+const AerodromeDetailsLayers = React.memo(function AerodromeDetailsLayers({ data, showCircuits, showHoldings, showWaypoints }:
+  { data: GeoJSON.FeatureCollection; showCircuits: boolean; showHoldings: boolean; showWaypoints: boolean }) {
   const focus = useCircuitFocus()
-  const on = { circuits: showCircuits, holdings: showHoldings, details: true }
+  const on = { circuits: showCircuits, holdings: showHoldings, reportingPoints: showWaypoints, details: true }
   return (
     <GeoJSONSource id="aerodrome-details" onPress={() => {}} data={data}>
       {DETAIL_LAYERS_STATIC.map(l => {
@@ -1599,7 +1599,7 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
           </GeoJSONSource>
 
         {/* ── Aerodrome details (experimental): areas, circuits, holding orbits ── */}
-        {detailsData && <AerodromeDetailsLayers data={detailsData} showCircuits={showCircuits} showHoldings={showHoldings} />}
+        {detailsData && <AerodromeDetailsLayers data={detailsData} showCircuits={showCircuits} showHoldings={showHoldings} showWaypoints={showWaypoints} />}
 
         {/* ── Aerodromes ───────────────────────────────────── */}
         <GeoJSONSource id="ofm-aerodromes" onPress={() => {}} data={aerodromesData}>
