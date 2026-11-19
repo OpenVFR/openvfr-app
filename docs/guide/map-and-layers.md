@@ -19,28 +19,27 @@ The map combines a basemap with aviation layers. Open the layer panel (the
 | Group | Layers |
 |---|---|
 | Airspace | CTR, TMA / CTA, RMZ / ATZ / TMZ, Restricted / Danger / TRA, Glider areas / sectors, Model flying areas, Regional NOTAMs |
-| Points | VOR, NDB, MRP (reporting points), Traffic circuits, Holding points, VFR waypoints, Aerodromes, Runways and taxiways, Obstacles, Landmarks, Your places (web) |
-| Terrain | Land use, Hillshade (relief), Contour lines, Terrain colour |
-| Live | Air traffic |
+| Navigation | VOR, NDB, Mandatory reporting points, Traffic circuits, Holding points, VFR reporting points, Aerodromes, Runways & taxiways, Obstacles, Landmarks, Places (web) |
+| Terrain | Land use, Hillshade, Contour lines, Terrain colour |
+| Traffic | Air traffic (ADS-B) |
 | Weather | Wind arrows |
 
-Your choices are remembered. On native the layers are grouped in the **Map
-display** sheet (sections Basemap, Airspace Ceiling, Airspace, Points,
-Terrain, Weather, Live); on the web in the **Layers** panel (sections
-Basemap, Altitude Filter, Airspace, Navigation, Terrain, Traffic, Weather).
+Your choices are remembered. On native the layers are in the **Map
+display** sheet, on the web in the **Layers** panel, in the same sections
+(Basemap, Altitude filter, Airspace, Navigation, Terrain, Traffic, Weather).
 
 When you first open the app, Glider areas / sectors, Model flying areas,
 Hillshade, Contour lines, Terrain colour, Air traffic and Wind arrows are off;
-everything else listed above is on. On the web, VFR waypoints are also off to begin with.
+everything else listed above is on. On the web, VFR reporting points are also off to begin with.
 
 **Glider areas / sectors** shows the glider sites (the small areas around a field where gliders launch) and, where the national gliding federation publishes them, its soaring sectors (Sweden: Svenska Segelflygförbundet's file, not part of the AIP, so check the current release). **Model flying areas** are a separate layer.
 
 **Traffic circuits** shows the circuits (and fly-in routes) drawn on the map and **Holding points** the orbit at each holding point; both are described under
 [Local information](./aerodromes-and-briefing.md#local-information). The reporting points of an airfield's own chart or club map
-(shown as the VFR waypoint triangle) follow the **VFR waypoints** switch.
+(shown as the VFR reporting point triangle) follow the **VFR reporting points** switch.
 
-Differences on native: VOR and NDB are one **Navaids** toggle, reporting
-points and VFR waypoints are one **Waypoints** toggle (on by default), and
+Differences on native: VOR and NDB are one **Navaids** toggle, mandatory and
+VFR reporting points are one **Reporting points** toggle (on by default), and
 there is no separate toggle for your places.
 
 ![Web app: the Layers panel with basemap, altitude filter and layer toggles](./images/web-layers-panel.png)

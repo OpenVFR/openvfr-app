@@ -56,7 +56,7 @@ export default function LayerPanel({ visibility, onChange, terrainColoring, onTe
         <div className={css.sectionNote}>Satellite imagery is planning-only and switches off in flight.</div>
       )}
 
-      <div className={css.section}>Altitude Filter</div>
+      <div className={css.section}>Altitude filter</div>
       <AltitudeSlider ceilingFt={ceilingFt} onChange={onCeilingChange} />
 
       {LAYER_GROUPS.map((group) => {

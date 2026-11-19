@@ -1,6 +1,6 @@
 /**
  * windBarb — shared bucketing rule for the wind-barb map icons (web canvas-
- * drawn, native pre-rendered PNG set) used by the ambient "Wind Arrows"
+ * drawn, native pre-rendered PNG set) used by the ambient "Wind arrows"
  * overlay (see windGrid.ts). A single source of truth for the rounding
  * step so web's dynamic style expression and native's fixed asset lookup
  * always agree on which bucket a given speed maps to.

@@ -469,7 +469,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
   {
     id: 'restricted',
     // R = Restricted / Danger / Prohibited areas, TRA = Temporary Reserved Areas
-    label: 'Restricted / Danger / TRA',
+    label: 'Restricted / danger / TRA',
     cssClass: 'groupRestricted',
     layerIds: ['airspace-fill-restricted', 'airspace-inset-restricted', 'airspace-border-restricted', 'airspace-border-danger', 'airspace-label-restricted'],
     defaultOn: true,
@@ -530,7 +530,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     id: 'waypointsMRP',
     // VFR Mandatory Reporting Points (MRP) — OFM OFMX source. 188 points.
     // These are compulsory position reports when entering a CTR/TMA.
-    label: 'MRP (Reporting Pts)',
+    label: 'Mandatory reporting points',
     cssClass: 'groupWaypointsMRP',
     layerIds: ['waypoints-mrp-icon', 'waypoints-mrp-label'],
     defaultOn: true,
@@ -560,7 +560,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
   {
     id: 'waypointsRP',
     // VFR Reporting Points (RP) — non-mandatory. 104 points.
-    label: 'VFR Waypoints',
+    label: 'VFR reporting points',
     cssClass: 'groupWaypointsRP',
     // + the reporting points of club maps and charts from the aerodrome details (added at runtime by AerodromeDetailsLayer)
     layerIds: ['waypoints-rp-icon', 'waypoints-rp-label', ...REPORTING_POINT_LAYER_IDS],
@@ -608,7 +608,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     // water towers, chimneys. Source: OpenStreetMap (ODbL) via Overpass API.
     // Deduplicated against OpenAIP obstacles at data-prep time.
     // On by default: visual reporting aids a VFR pilot navigates by.
-    label: 'Landmarks (OSM)',
+    label: 'Landmarks',
     cssClass: 'groupLandmarks',
     layerIds: ['landmarks-icon', 'landmarks-label'],
     defaultOn: true,
@@ -619,7 +619,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     // User-defined custom waypoints persisted in RxDB (IndexedDB).
     // Organised in folders; each folder's visibility is toggled independently.
     // Also appear as snap targets in route planning mode.
-    label: 'User Waypoints',
+    label: 'Places',
     cssClass: 'groupUserWaypoints',
     layerIds: ['user-waypoints-circle', 'user-waypoints-label'],
     defaultOn: true,
@@ -630,7 +630,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     // OSM landuse polygons (static per-country PMTiles).
     // Farmland (cream), wetland (pale blue), residential/commercial/industrial.
     // Fills the gap left by Protomaps landcover which fades out at z11+.
-    label: 'Terrain (landuse)',
+    label: 'Land use',
     cssClass: 'groupTerrain',
     layerIds: ['landuse-fill'],
     defaultOn: true,
@@ -643,7 +643,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     // the heaviest optional tile archive (raster, not vector) — pilots opt in.
     // Redundant with satellite imagery, so also force-hidden in satellite mode
     // (see MapView.tsx basemapMode effect).
-    label: 'Hillshade (relief)',
+    label: 'Hillshade',
     cssClass: 'groupHillshade',
     layerIds: ['hillshade', 'hillshade-water-cover'],
     defaultOn: false,
@@ -656,7 +656,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     // default: cosmetic/context layer, not flight-safety-critical.
     // Complements hillshade (relief "feel") with actual readable altitude
     // values — aviation-relevant for terrain-rise awareness near a route.
-    label: 'Contour Lines',
+    label: 'Contour lines',
     cssClass: 'groupContours',
     layerIds: ['contour-line', 'contour-label'],
     defaultOn: false,
@@ -667,7 +667,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     // ADS-B/MLAT traffic from OpenSky Network (server-side poll, SSE broadcast).
     // Off by default: requires OPENSKY_CLIENT_ID + OPENSKY_CLIENT_SECRET on server.
     // Dead-reckoned client-side at 1 s between 65 s server polls.
-    label: 'Air Traffic (ADS-B)',
+    label: 'Air traffic (ADS-B)',
     cssClass: 'groupTraffic',
     layerIds: ['traffic-urgency-ring', 'traffic-symbols'],
     defaultOn: false,
@@ -680,7 +680,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     // from AerodromePopup's per-runway favored-end highlight (that one is METAR-driven, single
     // airport; this one is a live grid sample, whole viewport). Off by
     // default: opts the user into extra live fetches on every pan/zoom.
-    label: 'Wind Arrows',
+    label: 'Wind arrows',
     cssClass: 'groupWind',
     layerIds: ['wind-arrows-icon'],
     defaultOn: false,

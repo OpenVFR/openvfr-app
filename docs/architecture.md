@@ -407,7 +407,7 @@ schematic circuit: `packages/shared/src/aerodromeDetails.ts`.
 
 **Web:** `AerodromeDetailsLayer` draws the details from zoom 9 below the
 airspace layers (areas filled per kind with name and heights, circuit legs
-with direction chevrons, points labelled; `reporting_point` features are the base layer's outline triangle `wp-rp` with their name, switched with web "VFR Waypoints" / native waypoints). An aerodrome that states a circuit
+with direction chevrons, points labelled; `reporting_point` features are the base layer's outline triangle `wp-rp` with their name, switched with web "VFR reporting points" / native Reporting points). An aerodrome that states a circuit
 direction but has no drawn circuit gets a **turn arrow**: from the departure end
 of the take-off runway, 0.25 NM straight on, then a quarter turn toward the
 circuit side, labelled "RWY 06 RH" (aircraft categories named only when the

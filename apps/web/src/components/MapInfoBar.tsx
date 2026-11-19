@@ -79,7 +79,7 @@ export default function MapInfoBar({ map, ceilingFt, units, windLabel, windSurfa
         </button>
         <span
           className={`${css.alt}${unlimited ? '' : ` ${css.altFiltered}`}`}
-          title="Airspace altitude filter — airspace starting above this is hidden. Change in Layers → Altitude Filter."
+          title="Airspace altitude filter — airspace starting above this is hidden. Change in Layers → Altitude filter."
         >
           {altLabel}
         </span>

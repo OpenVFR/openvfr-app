@@ -106,7 +106,7 @@ const AIRSPACE_GROUPS: Group[] = [
   { key: 'classCtr',   label: 'CTR',              color: AC.cCtrBorder  },
   { key: 'classCtma',  label: 'TMA / CTA',        color: AC.cTmaBorder  },
   { key: 'classG',     label: 'RMZ / ATZ / TMZ',        color: AC.gBorder     },
-  { key: 'restricted', label: 'Restricted / Danger / TRA', color: AC.rBorder     },
+  { key: 'restricted', label: 'Restricted / danger / TRA', color: AC.rBorder     },
   { key: 'glider',     label: 'Glider areas / sectors', color: AC.gldrBorder  },
   { key: 'model',      label: 'Model flying areas',     color: AC.modelBorder },
   // FIR-wide regional NOTAM circles -- grouped with airspace filters (matches
@@ -120,23 +120,23 @@ const AIRSPACE_GROUPS: Group[] = [
 // keeps the same relative order as the two platforms' respective lists.
 const POINTS_GROUPS: Group[] = [
   { key: 'navaids',    label: 'Navaids',    color: NAVAID_COLORS.vor        },
-  { key: 'waypoints',  label: 'Waypoints',  color: WAYPOINT_COLORS.mrp      },
+  { key: 'waypoints',  label: 'Reporting points', color: WAYPOINT_COLORS.mrp      },
   { key: 'holdings',   label: 'Holding points', color: WAYPOINT_COLORS.mrp  },
   { key: 'circuits' as const, label: 'Traffic circuits', color: DETAIL_KIND_COLOR.circuit_leg },
   { key: 'aerodromes', label: 'Aerodromes', color: AERODROME_COLORS.default },
-  { key: 'runways',    label: 'Runways',    color: '#c0d0b8'                },
+  { key: 'runways',    label: 'Runways & taxiways', color: '#c0d0b8'                },
   { key: 'obstacles',  label: 'Obstacles',  color: OBSTACLE_COLORS.tower    },
   { key: 'landmarks',  label: 'Landmarks',  color: '#455a64'                },
 ]
 
 const TRAFFIC_GROUPS: Group[] = [
-  { key: 'traffic', label: 'Air Traffic (ADS-B)', color: '#22c55e' },
+  { key: 'traffic', label: 'Air traffic (ADS-B)', color: '#22c55e' },
 ]
 
 // Matches web's LAYER_GROUPS 'Weather' section ('Wind Arrows' entry) --
 // same sky-blue swatch as WIND_BARB_COLOR (apps/web/src/utils/windBarbIcons.ts).
 const WEATHER_GROUPS: Group[] = [
-  { key: 'wind', label: 'Wind Arrows', color: '#38bdf8' },
+  { key: 'wind', label: 'Wind arrows', color: '#38bdf8' },
 ]
 
 // Order matches web's Terrain section (map-style.ts LAYER_GROUPS): hillshade,
@@ -145,10 +145,10 @@ const WEATHER_GROUPS: Group[] = [
 // first here same as web's second Terrain entry. terrainColor is native-only
 // (no web equivalent) and kept last so it doesn't interrupt the shared order.
 const TERRAIN_GROUPS: Group[] = [
-  { key: 'landuse',      label: 'Terrain (landuse)',                color: '#c9a876' },
-  { key: 'hillshade',    label: 'Hillshade (relief)',              color: '#8d6e63' },
-  { key: 'contours',     label: 'Contour Lines',                   color: '#785023' },
-  { key: 'terrainColor', label: 'Terrain Color (EXPERIMENTAL)',    color: '#ef4444' },
+  { key: 'landuse',      label: 'Land use',                color: '#c9a876' },
+  { key: 'hillshade',    label: 'Hillshade',              color: '#8d6e63' },
+  { key: 'contours',     label: 'Contour lines',                   color: '#785023' },
+  { key: 'terrainColor', label: 'Terrain colour (experimental)',    color: '#ef4444' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -238,7 +238,7 @@ export function MapDisplaySheet({
             )}
 
             {/* ── Airspace Ceiling ───────────────────────── */}
-            <SectionHeader title="Airspace Ceiling" />
+            <SectionHeader title="Altitude filter" />
             <View style={styles.sliderWrap}>
               <AltitudeSlider ceilingFt={ceilingFt} onChange={onCeilingChange} />
             </View>
@@ -256,7 +256,7 @@ export function MapDisplaySheet({
             ))}
 
             {/* ── Points ──────────────────────────────── */}
-            <SectionHeader title="Points" />
+            <SectionHeader title="Navigation" />
             {POINTS_GROUPS.map(g => (
               <LayerRow key={g.key} label={g.label} color={g.color}
                 on={layers[g.key]} onToggle={() => onLayerChange(g.key, !layers[g.key])} />
@@ -323,7 +323,7 @@ export function MapDisplaySheet({
                 on={layers[g.key]} onToggle={() => onLayerChange(g.key, !layers[g.key])} />
             ))}
 
-            <SectionHeader title="Live" />
+            <SectionHeader title="Traffic" />
             {TRAFFIC_GROUPS.map(g => (
               <LayerRow key={g.key} label={g.label} color={g.color}
                 on={layers[g.key]} onToggle={() => onLayerChange(g.key, !layers[g.key])} />

@@ -32,5 +32,6 @@ sidebar:
 | **VFR** | Visual flight rules. |
 | **VOR / NDB** | Radio navaids. |
 | **WCA** | Wind correction angle: the angle between track and heading needed to hold the track in the wind. |
-| **MRP** | Reporting point (shown as its own layer). |
+| **MRP** | Mandatory reporting point: a point where you must report, for example when entering a controlled zone (the **Mandatory reporting points** layer, a filled triangle). |
+| **RP** | VFR reporting point: a point you may be asked to report at or navigate by, not mandatory (the **VFR reporting points** layer, an outline triangle). |
 | **Virtual Radar** | The vertical profile chart. See [Virtual Radar](./virtual-radar.md). |
