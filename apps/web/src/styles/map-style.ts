@@ -508,6 +508,40 @@ export const LAYER_GROUPS: LayerGroup[] = [
     section: 'Airspace',
   },
   {
+    id: 'aerodromes',
+    label: 'Aerodromes',
+    cssClass: 'groupAerodromes',
+    layerIds: ['aerodromes-icon', 'aerodromes-label', 'aerodromes-atc-ring', 'aerodromes-notam-hint'],
+    defaultOn: true,
+    section: 'Aerodromes',
+  },
+  {
+    id: 'runways',
+    // OFM runway centre-lines with width-accurate rendering + threshold labels.
+    // Also includes OSM taxiways/aprons (static per-country GeoJSON).
+    label: 'Runways & taxiways',
+    cssClass: 'groupRunways',
+    layerIds: [
+      'taxiway-line',
+      'runways-outline',
+      'runways-line',
+      'runway-threshold-label',
+      'taxiway-label',
+    ],
+    defaultOn: true,
+    section: 'Aerodromes',
+  },
+  // Traffic circuits (experimental aerodrome details): drawn circuit legs and turn arrows. The layers are added at
+  // runtime, so AerodromeDetailsLayer applies this switch itself when it adds them.
+  {
+    id: 'aerodromeCircuits',
+    label: 'Traffic circuits',
+    cssClass: 'groupAerodromeCircuits',
+    layerIds: [...CIRCUIT_LAYER_IDS],
+    defaultOn: true,
+    section: 'Aerodromes' as const,
+  },
+  {
     id: 'navaidsVOR',
     // VOR (and DVOR) navaids — OFM OFMX source. 24 points across Sweden.
     // Shows the 3-letter identifier + frequency from zoom 8+.
@@ -536,27 +570,6 @@ export const LAYER_GROUPS: LayerGroup[] = [
     defaultOn: true,
     section: 'Navigation',
   },
-  // Traffic circuits (experimental aerodrome details): drawn circuit legs and turn arrows. The layers are added at
-  // runtime, so AerodromeDetailsLayer applies this switch itself when it adds them.
-  {
-    id: 'aerodromeCircuits',
-    label: 'Traffic circuits',
-    cssClass: 'groupAerodromeCircuits',
-    layerIds: [...CIRCUIT_LAYER_IDS],
-    defaultOn: true,
-    section: 'Navigation' as const,
-  },
-  {
-    id: 'waypointsHold',
-    // VFR holding points ("HOLDING WEST"): where ATC sends VFR traffic to wait outside a CTR. Published as
-    // ordinary reporting points, but needed as much as the MRPs, so on by default and drawn as an orbit.
-    label: 'Holding points',
-    cssClass: 'groupWaypointsHold',
-    // + the orbit direction from the experimental aerodrome details (added at runtime by AerodromeDetailsLayer)
-    layerIds: ['waypoints-hold-icon', 'waypoints-hold-label', HOLDING_ORBIT_LAYER],
-    defaultOn: true,
-    section: 'Navigation',
-  },
   {
     id: 'waypointsRP',
     // VFR Reporting Points (RP) — non-mandatory. 104 points.
@@ -568,26 +581,13 @@ export const LAYER_GROUPS: LayerGroup[] = [
     section: 'Navigation',
   },
   {
-    id: 'aerodromes',
-    label: 'Aerodromes',
-    cssClass: 'groupAerodromes',
-    layerIds: ['aerodromes-icon', 'aerodromes-label', 'aerodromes-atc-ring', 'aerodromes-notam-hint'],
-    defaultOn: true,
-    section: 'Navigation',
-  },
-  {
-    id: 'runways',
-    // OFM runway centre-lines with width-accurate rendering + threshold labels.
-    // Also includes OSM taxiways/aprons (static per-country GeoJSON).
-    label: 'Runways & taxiways',
-    cssClass: 'groupRunways',
-    layerIds: [
-      'taxiway-line',
-      'runways-outline',
-      'runways-line',
-      'runway-threshold-label',
-      'taxiway-label',
-    ],
+    id: 'waypointsHold',
+    // VFR holding points ("HOLDING WEST"): where ATC sends VFR traffic to wait outside a CTR. Published as
+    // ordinary reporting points, but needed as much as the MRPs, so on by default and drawn as an orbit.
+    label: 'Holding points',
+    cssClass: 'groupWaypointsHold',
+    // + the orbit direction from the experimental aerodrome details (added at runtime by AerodromeDetailsLayer)
+    layerIds: ['waypoints-hold-icon', 'waypoints-hold-label', HOLDING_ORBIT_LAYER],
     defaultOn: true,
     section: 'Navigation',
   },
@@ -671,7 +671,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     cssClass: 'groupTraffic',
     layerIds: ['traffic-urgency-ring', 'traffic-symbols'],
     defaultOn: false,
-    section: 'Traffic',
+    section: 'Live',
   },
   {
     id: 'wind',
@@ -684,7 +684,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     cssClass: 'groupWind',
     layerIds: ['wind-arrows-icon'],
     defaultOn: false,
-    section: 'Weather',
+    section: 'Live',
   },
 ]
 

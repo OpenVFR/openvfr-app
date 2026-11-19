@@ -18,15 +18,15 @@ The map combines a basemap with aviation layers. Open the layer panel (the
 
 | Group | Layers |
 |---|---|
-| Airspace | CTR, TMA / CTA, RMZ / ATZ / TMZ, Restricted / Danger / TRA, Glider areas / sectors, Model flying areas, Regional NOTAMs |
-| Navigation | VOR, NDB, Mandatory reporting points, Traffic circuits, Holding points, VFR reporting points, Aerodromes, Runways & taxiways, Obstacles, Landmarks, Places (web) |
+| Airspace | CTR, TMA / CTA, RMZ / ATZ / TMZ, Restricted / danger / TRA, Glider areas / sectors, Model flying areas, Regional NOTAMs |
+| Aerodromes | Aerodromes, Runways & taxiways, Traffic circuits |
+| Navigation | VOR, NDB, Mandatory reporting points, VFR reporting points, Holding points, Obstacles, Landmarks, Places (web) |
 | Terrain | Land use, Hillshade, Contour lines, Terrain colour |
-| Traffic | Air traffic (ADS-B) |
-| Weather | Wind arrows |
+| Live | Air traffic (ADS-B), Wind arrows |
 
 Your choices are remembered. On native the layers are in the **Map
 display** sheet, on the web in the **Layers** panel, in the same sections
-(Basemap, Altitude filter, Airspace, Navigation, Terrain, Traffic, Weather).
+(Basemap, Altitude filter, Airspace, Aerodromes, Navigation, Terrain, Live).
 
 When you first open the app, Glider areas / sectors, Model flying areas,
 Hillshade, Contour lines, Terrain colour, Air traffic and Wind arrows are off,
