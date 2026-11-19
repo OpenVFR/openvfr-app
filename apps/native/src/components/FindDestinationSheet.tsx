@@ -173,9 +173,9 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
           <View style={styles.rowTags}>
             {a.icao === homeIcao && <Text style={styles.tagHome}>HOME</Text>}
             {a.withinGlide && <Text style={styles.tagGlide}>GLIDE</Text>}
-            {hasAvgas(a.fuel) && <Text style={styles.tag}>AVGAS</Text>}
+            {hasAvgas(a.fuel) && <Text style={styles.tag}>100LL</Text>}
             {hasJet(a.fuel) && <Text style={styles.tag}>JET</Text>}
-            {sellsAnyFuel(a.fuel, ['AVGAS_UL91']) && <Text style={styles.tag}>UL91</Text>}
+            {sellsAnyFuel(a.fuel, ['AVGAS_UL91']) && <Text style={styles.tag}>91/96 UL</Text>}
             {sellsAnyFuel(a.fuel, ['MOGAS']) && <Text style={styles.tag}>MOGAS</Text>}
             {isHard(a.surfaces) && <Text style={styles.tag}>ASPH</Text>}
             {isGrass(a.surfaces) && !isHard(a.surfaces) && <Text style={styles.tagGrass}>GRASS</Text>}

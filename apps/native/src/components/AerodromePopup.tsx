@@ -13,6 +13,7 @@
  */
 
 import React, { useEffect, useState } from 'react'
+import { aerodromeFuelLabel } from '@open-vfr/shared/fuelTypes'
 import { formatCallsign } from '@open-vfr/shared/callsignFormat'
 import * as Application from 'expo-application'
 import { buildReportProblemMailto, REPORT_PROBLEM_EMAIL } from '@open-vfr/shared/reportProblem'
@@ -391,7 +392,7 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
 
               {fuel.length > 0 && (
                 <Section title="Fuel">
-                  <Text style={styles.value}>{fuel.join(', ')}</Text>
+                  <Text style={styles.value}>{fuel.map(aerodromeFuelLabel).join(', ')}</Text>
                 </Section>
               )}
 

@@ -3,11 +3,11 @@
  * rules, hours, areas, holding points with their orbit, reporting points -- each with every source it came from and
  * an "unreviewed" mark in preview data. Same content as web's LocalInfoSection.tsx.
  */
-import React from 'react'
-import { Linking, Text, View, StyleSheet } from 'react-native'
+import React, { useState } from 'react'
+import { Linking, Text, TouchableOpacity, View, StyleSheet } from 'react-native'
 import {
   DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, orbitLabel,
-  type DetailProvenance, type LocalInfo,
+  type DetailProvenance, type LocalInfo, type RuleGroup,
 } from '@open-vfr/shared/aerodromeDetails'
 import { useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { Section } from './AerodromeBriefShared'
@@ -41,6 +41,32 @@ function Block({ title, prov, children, styles }:
   )
 }
 
+/** Rules under headings: the key lines show, the rest fold away under their heading. */
+function RuleGroups({ groups, styles }: { groups: RuleGroup[]; styles: ReturnType<typeof makeStyles> }) {
+  const [open, setOpen] = useState<Record<string, boolean>>({})
+  return (
+    <>
+      {groups.map(g => {
+        const key = g.lines.filter(l => l.key), rest = g.lines.filter(l => !l.key)
+        const fold = rest.length >= 2          // a single line is not worth a toggle
+        const shown = open[g.title] || !fold ? g.lines : key
+        return (
+          <View key={g.title} style={styles.ruleGroup}>
+            <Text style={styles.ruleGroupTitle}>{g.title}</Text>
+            {shown.map((l, i) => <Text key={i} style={[styles.item, l.key && styles.keyRule]}>{l.text}</Text>)}
+            {fold && (
+              <TouchableOpacity onPress={() => setOpen(o => ({ ...o, [g.title]: !o[g.title] }))} accessibilityRole="button"
+                accessibilityState={{ expanded: !!open[g.title] }} accessibilityLabel={`${g.title}: ${open[g.title] ? 'show less' : 'show all'}`}>
+                <Text style={styles.more}>{open[g.title] ? 'Show less' : key.length ? `${rest.length} more` : `Show ${rest.length}`}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )
+      })}
+    </>
+  )
+}
+
 export default function LocalInfoSection({ info }: { info: LocalInfo | undefined }) {
   const styles = useThemedStyles(makeStyles)
   if (!info || !hasLocalInfo(info)) return null
@@ -51,7 +77,11 @@ export default function LocalInfoSection({ info }: { info: LocalInfo | undefined
       {info.circuits.length > 0 && (
         <Block title="Circuits" prov={pv['circuits']} styles={styles}>{lines(info.circuits.map(formatCircuit))}</Block>
       )}
-      {info.localRules.length > 0 && <Block title="Local rules" prov={pv['local_rules']} styles={styles}>{lines(info.localRules)}</Block>}
+      {info.localRules.length > 0 && (
+        <Block title="Local rules" prov={pv['local_rules']} styles={styles}>
+          {info.localRuleGroups ? <RuleGroups groups={info.localRuleGroups} styles={styles} /> : lines(info.localRules)}
+        </Block>
+      )}
       {info.hoursRemarks.length > 0 && <Block title="Hours" prov={pv['hours_remarks']} styles={styles}>{lines(info.hoursRemarks)}</Block>}
       {info.areas.length > 0 && (
         <Block title="Areas" prov={pv['areas']} styles={styles}>
@@ -98,6 +128,10 @@ function makeStyles(theme: ScaledTheme) {
     link: { textDecorationLine: 'underline' },
     pending: { color: '#f59e0b', fontSize: theme.textXs, borderWidth: 1, borderColor: '#f59e0b', borderRadius: 3, paddingHorizontal: 3 },
     item: { color: theme.textPrimary, fontSize: theme.textSm, marginVertical: 1 },
+    ruleGroup: { marginBottom: theme.space1 },
+    ruleGroupTitle: { color: theme.textMuted, fontSize: theme.textXs, fontWeight: '600', marginTop: 2 },
+    keyRule: { fontWeight: '600' },
+    more: { color: theme.textMuted, fontSize: theme.textXs, textDecorationLine: 'underline', paddingVertical: 4 },
     sub: { color: theme.textMuted, fontSize: theme.textXs, marginLeft: theme.space2 },
     row: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space1 },
     swatch: { width: 8, height: 8, borderRadius: 2, marginTop: 5 },

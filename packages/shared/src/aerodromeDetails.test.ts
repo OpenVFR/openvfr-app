@@ -194,3 +194,22 @@ describe('localAreaInfo', () => {
     expect(localAreaInfo(null)).toBeNull()
   })
 })
+
+describe('grouped local rules', () => {
+  const line = (title: string, text: string, key = false) => ({ title, text, key })
+  const many = [line('Animals', 'Deer on the field'), line('AIP', 'Obstacle 1 NM NE', true), line('Other', 'Phone for field check'),
+    line('Noise and neighbours', 'No overflight of the farm', true), line('Noise and neighbours', 'Avoid the red areas'),
+    line('Procedures', 'Report arrival 123.4'), line('Obstacles', 'Turbines east, 200 ft')]
+  it('groups in a fixed order with the key lines marked', () => {
+    const g = localInfo({ local_rules: many.map(x => x.text), local_rule_groups: many }).localRuleGroups!
+    expect(g.map(x => x.title)).toEqual(['AIP', 'Obstacles', 'Noise and neighbours', 'Animals', 'Procedures', 'Other'])
+    expect(g[2].lines).toEqual([{ text: 'No overflight of the farm', key: true }, { text: 'Avoid the red areas', key: false }])
+  })
+  it('a short list stays plain, and so does one without groups', () => {
+    expect(localInfo({ local_rules: ['a'], local_rule_groups: many.slice(0, 3) }).localRuleGroups).toBeNull()
+    expect(localInfo({ local_rules: ['a'] }).localRuleGroups).toBeNull()
+  })
+  it('accepts the JSON string MapLibre makes of a nested property', () => {
+    expect(localInfo({ local_rule_groups: JSON.stringify(many) }).localRuleGroups).toHaveLength(6)
+  })
+})

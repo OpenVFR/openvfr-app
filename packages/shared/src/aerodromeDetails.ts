@@ -215,9 +215,19 @@ export interface HoldingInfo { name: string; direction: 'left' | 'right' | null;
 
 export interface AreaInfo { kind: DetailKind; name: string | null; remark: string | null; floor: DetailLimit | null; ceiling: DetailLimit | null }
 
+/** A list this long is shown grouped and folded; a shorter one is shown whole as a plain list. */
+export const RULES_GROUPED_MIN = 7
+const RULE_GROUP_ORDER = ['AIP', 'Arrival and circuit', 'Obstacles', 'Noise and neighbours', 'Animals', 'Procedures', 'Other']
+
+/** Local rules under a heading (from the tidy version, openvfr-infra compact_rules.py): `key` lines are shown up front, the
+ *  others fold away under the heading. */
+export interface RuleGroup { title: string; lines: { text: string; key: boolean }[] }
+
 export interface LocalInfo {
   circuits: CircuitInfo[]
   localRules: string[]
+  /** The same rules grouped, or null (no tidy version: show `localRules` as a plain list). */
+  localRuleGroups: RuleGroup[] | null
   hoursRemarks: string[]
   areas: AreaInfo[]
   reportingPoints: { name: string; remark: string | null }[]
@@ -237,6 +247,27 @@ const list = (v: unknown): unknown[] => { const n = nested(v); return Array.isAr
 const strings = (v: unknown, max = 400): string[] => {
   const n = nested(v)
   return (Array.isArray(n) ? n : typeof n === 'string' ? [n] : []).map(s => text(s, max)).filter((s): s is string => !!s)
+}
+
+/** The grouped rules (`local_rule_groups`), headings in a fixed order; null when absent or too short to need grouping. */
+function ruleGroups(v: unknown): RuleGroup[] | null {
+  const n = nested(v)
+  if (!Array.isArray(n)) return null
+  const by = new Map<string, RuleGroup>()
+  let count = 0
+  for (const r of n) {
+    if (!r || typeof r !== 'object') continue
+    const o = r as Record<string, unknown>
+    const t = text(o['text'], 400)
+    if (!t) continue
+    const title = text(o['title'], 40) ?? 'Other'
+    if (!by.has(title)) by.set(title, { title, lines: [] })
+    by.get(title)!.lines.push({ text: t, key: o['key'] === true })
+    count++
+  }
+  if (count < RULES_GROUPED_MIN) return null
+  const rank = (t: string) => { const i = RULE_GROUP_ORDER.indexOf(t); return i < 0 ? RULE_GROUP_ORDER.length - 1 : i }
+  return [...by.values()].sort((a, b) => rank(a.title) - rank(b.title))
 }
 
 /** The local-information fields of an aerodrome's properties (absent fields are empty). */
@@ -285,6 +316,7 @@ export function localInfo(props: Record<string, unknown>): LocalInfo {
   return {
     circuits, areas, reportingPoints, holdings, provenance,
     localRules: strings(props['local_rules']),
+    localRuleGroups: ruleGroups(props['local_rule_groups']),
     hoursRemarks: strings(props['hours_remarks']),
   }
 }

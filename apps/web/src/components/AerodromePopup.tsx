@@ -1,3 +1,4 @@
+import { aerodromeFuelLabel } from '@open-vfr/shared/fuelTypes'
 import { useState, useEffect, useMemo } from 'react'
 import css from './AerodromePopup.module.css'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
@@ -222,13 +223,6 @@ const SURFACE_LABEL: Record<string, string> = {
   SAND: 'Sand',
 }
 
-const FUEL_LABEL: Record<string, string> = {
-  AVGAS: 'AVGAS',
-  A1: 'JET-A1',
-  'OCT91-98': '100LL',
-  MOGAS: 'MOGAS',
-}
-
 const CONTACT_LABEL: Record<string, string> = {
   PHONE: 'Phone',
   'PHONE-MET': 'Met',
@@ -265,7 +259,7 @@ const DAY_LABEL: Record<string, string> = {
 }
 
 function fuelBadge(code: string): string {
-  return FUEL_LABEL[code] ?? code
+  return aerodromeFuelLabel(code)
 }
 
 // Per-metric colour tone (visTone/ceilingTone/windTone) and text formatting

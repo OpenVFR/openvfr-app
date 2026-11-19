@@ -148,7 +148,7 @@ export function parseFuelGrades(v: unknown): FuelCode[] {
     if (typeof item !== 'string') continue
     const s = item.toUpperCase().replace(/[^A-Z0-9]/g, '')
     if (!s) continue
-    if (s.includes('UL91') || s === 'AVGASUL91') out.add('AVGAS_UL91')
+    if (s.includes('UL91') || s === 'AVGASUL91' || s.includes('9196')) out.add('AVGAS_UL91')
     else if (s.includes('100')) out.add('AVGAS100LL')
     else if (s.includes('JET') || s === 'A1' || s.includes('DIESEL')) out.add('JETA1')
     else if (s.includes('MOGAS') || s.includes('EN228') || s.includes('UNLEADED') || s.includes('RON') || s.includes('OCT')) out.add('MOGAS')

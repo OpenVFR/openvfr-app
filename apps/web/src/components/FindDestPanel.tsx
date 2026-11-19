@@ -174,9 +174,9 @@ export default function FindDestPanel({
                 <span className={css.rowTags}>
                   {a.icao === homeIcao && <span className={css.tagHome}>HOME</span>}
                   {a.withinGlide       && <span className={css.tagGlide}>GLIDE</span>}
-                  {hasAvgas(a.fuel)    && <span className={css.tagFuel}>AVGAS</span>}
+                  {hasAvgas(a.fuel)    && <span className={css.tagFuel}>100LL</span>}
                   {hasJet(a.fuel)      && <span className={css.tagFuel}>JET</span>}
-                  {sellsAnyFuel(a.fuel, ['AVGAS_UL91']) && <span className={css.tagFuel}>UL91</span>}
+                  {sellsAnyFuel(a.fuel, ['AVGAS_UL91']) && <span className={css.tagFuel}>91/96 UL</span>}
                   {sellsAnyFuel(a.fuel, ['MOGAS'])      && <span className={css.tagFuel}>MOGAS</span>}
                   {isHard(a.surfaces)  && <span className={css.tagSurf}>ASPH</span>}
                   {isGrass(a.surfaces) && !isHard(a.surfaces) && <span className={css.tagSurfGrass}>GRASS</span>}

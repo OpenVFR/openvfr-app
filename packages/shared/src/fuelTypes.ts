@@ -6,8 +6,9 @@
  * pilot prefers, the others are approved alternatives.
  *
  * Aerodrome data (`fuel` property of the aerodromes GeoJSON) uses codes such
- * as AVGAS, AVGAS_UL91, MOGAS, OCT91-98 (motor gasoline by octane) and A1
- * (jet fuel). Unknown codes never match.
+ * as AVGAS (= 100LL), AVGAS_UL91 (unleaded avgas, sold as 91/96 UL), MOGAS (car
+ * petrol), OCT91-98 (old name for MOGAS) and A1 (jet fuel). Unknown codes never match.
+ * One name per product everywhere: AVGAS 100LL, AVGAS 91/96 UL, MOGAS, JET A-1.
  */
 import type { FuelCode } from './types'
 
@@ -15,7 +16,7 @@ export const FUEL_CODES: readonly FuelCode[] = ['AVGAS100LL', 'AVGAS_UL91', 'MOG
 
 export const FUEL_LABELS: Record<FuelCode, string> = {
   AVGAS100LL: 'AVGAS 100LL',
-  AVGAS_UL91: 'AVGAS UL91',
+  AVGAS_UL91: 'AVGAS 91/96 UL',
   MOGAS:      'MOGAS',
   JETA1:      'JET A-1',
 }
@@ -29,6 +30,12 @@ function supplies(code: string, grade: FuelCode): boolean {
     case 'MOGAS':      return c === 'MOGAS' || c.startsWith('OCT')
     case 'JETA1':      return c === 'A1' || c === 'JETA1' || c === 'JET_A1' || c.startsWith('JET')
   }
+}
+
+/** The name to show for a fuel code of the aerodrome data; an unknown code is shown as it is. */
+export function aerodromeFuelLabel(code: string): string {
+  for (const g of FUEL_CODES) if (supplies(code, g)) return FUEL_LABELS[g]
+  return code
 }
 
 /** Grades from `wanted` that an aerodrome with fuel codes `aerodromeFuel` sells, in `wanted`'s (preference) order. */

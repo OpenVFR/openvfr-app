@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchingFuels, sellsAnyFuel, normalizeFuelCodes, fuelPreferenceRank } from './fuelTypes'
+import { matchingFuels, sellsAnyFuel, normalizeFuelCodes, fuelPreferenceRank, aerodromeFuelLabel } from './fuelTypes'
 
 describe('fuel grade matching', () => {
   it('maps aerodrome codes to grades', () => {
@@ -21,5 +21,12 @@ describe('fuel grade matching', () => {
   it('normalizes stored lists, keeping the preference order', () => {
     expect(normalizeFuelCodes(['mogas', 'AVGAS100LL', 'X', 3, 'MOGAS'])).toEqual(['MOGAS', 'AVGAS100LL'])
     expect(normalizeFuelCodes('AVGAS100LL')).toEqual([])
+  })
+})
+
+describe('fuel names', () => {
+  it('one name per product', () => {
+    expect(['AVGAS', '100LL', 'AVGAS_UL91', 'UL91', 'MOGAS', 'OCT91-98', 'A1', 'XYZ'].map(aerodromeFuelLabel))
+      .toEqual(['AVGAS 100LL', 'AVGAS 100LL', 'AVGAS 91/96 UL', 'AVGAS 91/96 UL', 'MOGAS', 'MOGAS', 'JET A-1', 'XYZ'])
   })
 })

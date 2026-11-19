@@ -203,7 +203,7 @@ export default function DirectToPanel({
               <span className={css.rowTags}>
                 {a.icao === homeIcao && <span className={css.tagHome}>HOME</span>}
                 {a.withinGlide       && <span className={css.tagGlide}>GLIDE</span>}
-                {hasAvgas(a)         && <span className={css.tagFuel}>AVGAS</span>}
+                {hasAvgas(a)         && <span className={css.tagFuel}>100LL</span>}
                 {hasJet(a)           && <span className={css.tagFuel}>JET</span>}
                 {a.maxRunwayM > 0    && <span className={css.tagRwy}>{a.maxRunwayM}m</span>}
               </span>

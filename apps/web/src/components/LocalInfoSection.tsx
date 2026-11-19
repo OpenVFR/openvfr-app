@@ -5,9 +5,10 @@
  * unreviewed exist only in a local preview build. Renders nothing when the
  * aerodrome has no such fields.
  */
+import { useState } from 'react'
 import {
   DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, orbitLabel, type DetailProvenance,
-  type LocalInfo,
+  type LocalInfo, type RuleGroup,
 } from '@open-vfr/shared/aerodromeDetails'
 import { useLocalInfo } from '../utils/aerodromeDetails'
 import css from './LocalInfoSection.module.css'
@@ -46,6 +47,32 @@ function Block({ title, prov, children }: { title: string; prov?: DetailProvenan
   )
 }
 
+/** Rules under headings: the key lines show, the rest fold away under their heading. */
+function RuleGroups({ groups }: { groups: RuleGroup[] }) {
+  const [open, setOpen] = useState<Record<string, boolean>>({})
+  return (
+    <>
+      {groups.map(g => {
+        const key = g.lines.filter(l => l.key), rest = g.lines.filter(l => !l.key)
+        const fold = rest.length >= 2          // a single line is not worth a toggle
+        const shown = open[g.title] || !fold ? g.lines : key
+        return (
+          <div key={g.title} className={css.ruleGroup}>
+            <div className={css.ruleGroupTitle}>{g.title}</div>
+            {shown.length > 0 && <ul className={css.list}>{shown.map((l, i) => <li key={i} className={l.key ? css.keyRule : undefined}>{l.text}</li>)}</ul>}
+            {fold && (
+              <button type="button" className={css.more} aria-expanded={!!open[g.title]}
+                onClick={() => setOpen(o => ({ ...o, [g.title]: !o[g.title] }))}>
+                {open[g.title] ? 'Show less' : `${key.length ? `${rest.length} more` : `Show ${rest.length}`}`}
+              </button>
+            )}
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
 function Content({ info }: { info: LocalInfo }) {
   const pv = info.provenance
   return (
@@ -57,7 +84,9 @@ function Content({ info }: { info: LocalInfo }) {
       )}
       {info.localRules.length > 0 && (
         <Block title="Local rules" prov={pv['local_rules']}>
-          <ul className={css.list}>{info.localRules.map((r, i) => <li key={i}>{r}</li>)}</ul>
+          {info.localRuleGroups
+            ? <RuleGroups groups={info.localRuleGroups} />
+            : <ul className={css.list}>{info.localRules.map((r, i) => <li key={i}>{r}</li>)}</ul>}
         </Block>
       )}
       {info.hoursRemarks.length > 0 && (
