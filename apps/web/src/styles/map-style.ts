@@ -1898,8 +1898,9 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
             14, 0.80,
             16, 1.00,
           ],
-          'icon-allow-overlap': false,
-          'icon-padding': 2,
+          // Overlap allowed: a church is also a basemap place (its own label and symbol sit at the same spot), and
+          // collision with those hid the landmark icon as soon as the labels appeared when zooming in.
+          'icon-allow-overlap': true,
           'icon-anchor': 'center',
         },
       },
