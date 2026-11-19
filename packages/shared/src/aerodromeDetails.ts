@@ -21,11 +21,11 @@ export { CIRCUIT_GROUP_COLOR, DETAIL_KIND_COLOR }   // the palettes live in feat
 
 export type DetailKind =
   | 'noise_sensitive' | 'avoid_area' | 'glider_area' | 'parachute_area' | 'model_area'
-  | 'circuit_leg' | 'reporting_point' | 'holding' | 'taxiway' | 'parking' | 'other'
+  | 'circuit_leg' | 'arrival_route' | 'reporting_point' | 'holding' | 'taxiway' | 'parking' | 'other'
 
 const KINDS: readonly DetailKind[] = [
   'noise_sensitive', 'avoid_area', 'glider_area', 'parachute_area', 'model_area',
-  'circuit_leg', 'reporting_point', 'holding', 'taxiway', 'parking',
+  'circuit_leg', 'arrival_route', 'reporting_point', 'holding', 'taxiway', 'parking',
 ]
 
 /** Areas a pilot keeps out of or flies differently near. */
@@ -38,6 +38,7 @@ export const DETAIL_KIND_LABEL: Record<DetailKind, string> = {
   parachute_area: 'Parachute area',
   model_area: 'Model flying area',
   circuit_leg: 'Circuit',
+  arrival_route: 'Arrival route',
   reporting_point: 'Reporting point',
   holding: 'Holding',
   taxiway: 'Taxiway',
@@ -506,6 +507,7 @@ const KIND_NOTE: Partial<Record<DetailKind, string>> = {
   glider_area: 'Glider activity.',
   parachute_area: 'Parachute jumping.',
   model_area: 'Model aircraft flying.',
+  arrival_route: 'Fly-in route drawn on the club map.',
 }
 
 export interface LocalAreaInfo {
@@ -536,7 +538,7 @@ export interface LocalAreaInfo {
 export function localAreaInfo(p: Record<string, unknown> | null | undefined): LocalAreaInfo | null {
   if (!p) return null
   const kind = p['kind'] as DetailKind
-  if (!(AREA_KINDS.has(kind) || kind === 'circuit_leg') || p['role'] === 'turn' || p['role'] === 'label') return null
+  if (!(AREA_KINDS.has(kind) || kind === 'circuit_leg' || kind === 'arrival_route') || p['role'] === 'turn' || p['role'] === 'label') return null
   const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null)
   const acc = Number(p['accuracy_m'])
   return {

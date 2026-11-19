@@ -107,6 +107,7 @@ export const DETAIL_KIND_COLOR: Record<DetailKind, string> = {
   parachute_area: '#a855f7',
   model_area: '#14b8a6',
   circuit_leg: '#38bdf8',
+  arrival_route: '#ec4899',
   reporting_point: '#a3e635',
   holding: '#0ca678',
   taxiway: '#94a3b8',

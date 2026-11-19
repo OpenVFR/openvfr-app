@@ -195,7 +195,7 @@ export function buildDetailsMapData(
       properties: {
         ...f.properties,
         label: f.properties.kind !== 'circuit_leg' && f.properties.kind !== 'holding'
-          && (f.geometry.type === 'Point' || AREA_KINDS.has(f.properties.kind as DetailKind))
+          && (f.geometry.type === 'Point' || AREA_KINDS.has(f.properties.kind as DetailKind) || f.properties.kind === 'arrival_route')
           ? (mapAreaLabel(f.properties) ? [mapAreaLabel(f.properties), f.properties.pending ? '(unreviewed)' : null].filter(Boolean).join('\n') : '')
           : '',
         clabel: f.properties.kind === 'circuit_leg' ? circuitLabel(f.properties.name) : '',
@@ -211,7 +211,7 @@ export function buildDetailsMapData(
 // What an area is, in English, in front of a place name taken from the source ("Central Västerås" alone says nothing).
 const AREA_KIND_LABEL: Partial<Record<string, string>> = {
   noise_sensitive: 'Noise-sensitive area', avoid_area: 'Avoid area', glider_area: 'Glider area',
-  parachute_area: 'Parachute area', model_area: 'Model aircraft area',
+  parachute_area: 'Parachute area', model_area: 'Model aircraft area', arrival_route: 'Arrival route',
 }
 
 // A source's own words for the kind at the start of a name ("Noise-sensitive area Kastberga", "Bullerkänsligt omr Kastberga").

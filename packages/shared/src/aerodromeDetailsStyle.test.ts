@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { DETAIL_LAYERS, staticColorLayers, layerFilter, buildDetailsMapData, circuitLabel, mapAreaLabel, belowText, CIRCUIT_LAYER_IDS } from './aerodromeDetailsStyle'
-import { DETAIL_KIND_COLOR, CIRCUIT_GROUP_COLOR, parseAerodromeDetails, schematicCircuitFeatures } from './aerodromeDetails'
+import { DETAIL_KIND_COLOR, CIRCUIT_GROUP_COLOR, parseAerodromeDetails, schematicCircuitFeatures, localAreaInfo } from './aerodromeDetails'
 
 describe('aerodromeDetailsStyle', () => {
   it('static-colour layers never compute a colour from feature properties', () => {
@@ -82,6 +82,26 @@ describe('mapAreaLabel', () => {
   it('keeps the kind in front of the name for other areas', () => {
     expect(mapAreaLabel({ kind: 'glider_area', name: 'Öresjö', floor: null, ceiling: null })).toBe('Glider area: Öresjö')
     expect(mapAreaLabel({ kind: 'avoid_area', name: null, floor: null, ceiling: null })).toBe('Avoid area')
+  })
+})
+
+describe('arrival routes', () => {
+  const route = {
+    type: 'Feature' as const, geometry: { type: 'LineString' as const, coordinates: [[13, 55], [13.01, 55.01]] },
+    properties: { icao: 'ESTT', kind: 'arrival_route', name: 'Fly-in and join', geometry_quality: 'approximate' },
+  }
+  it('is a kind of its own, coloured, drawn as a line and named on the map', () => {
+    const fc = parseAerodromeDetails({ type: 'FeatureCollection', features: [route] })!
+    expect(fc.features[0]!.properties.kind).toBe('arrival_route')
+    expect(DETAIL_KIND_COLOR.arrival_route).toMatch(/^#/)
+    expect(DETAIL_KIND_COLOR.arrival_route).not.toBe(DETAIL_KIND_COLOR.other)                    // not the pale "other" grey
+    const data = buildDetailsMapData(fc.features, [])
+    expect(data.features[0]!.properties.label).toBe('Arrival route: Fly-in and join')
+    expect(DETAIL_LAYERS.some(l => l.id === 'ad-details-line-dashed')).toBe(true)                 // approximate lines are dashed
+    expect(staticColorLayers().some(l => l.id === 'ad-details-line-dashed-arrival_route')).toBe(true)   // native: one layer per kind
+  })
+  it('opens a tap popup', () => {
+    expect(localAreaInfo({ aerodrome: 'ESTT', kind: 'arrival_route', name: 'Fly-in and join' })).toMatchObject({ kindLabel: 'Arrival route', name: 'Fly-in and join' })
   })
 })
 
