@@ -396,7 +396,7 @@ Always on, no build flag: nothing is drawn unless the files below exist (and the
 deployment may publish `<cc>-aerodrome-details.geojson` (local geometry per
 aerodrome: `noise_sensitive`, `avoid_area`, `glider_area`, `parachute_area`,
 `model_area` areas with optional `floor`/`ceiling` `{ref: AGL|AMSL|FL|UNL, ft}`,
-`circuit_leg` lines, extra `reporting_point`s, `taxiway`, `parking`; each with
+`circuit_leg` lines, `arrival_route` lines (a fly-in drawn on a club map; drawn, labelled and switched like a circuit), extra `reporting_point`s, `taxiway`, `parking`; each with
 `icao` or `local_id`, `name`, `remarks`, `geometry_quality`
 (`exact` | `approximate` + `accuracy_m`) and `provenance`) and add
 local-information fields to `<cc>-aerodromes.geojson`: `circuits`
@@ -407,7 +407,7 @@ schematic circuit: `packages/shared/src/aerodromeDetails.ts`.
 
 **Web:** `AerodromeDetailsLayer` draws the details from zoom 9 below the
 airspace layers (areas filled per kind with name and heights, circuit legs
-with direction chevrons, points labelled). An aerodrome that states a circuit
+with direction chevrons, points labelled; `reporting_point` features are the base layer's outline triangle `wp-rp` with their name, switched with web "VFR Waypoints" / native waypoints). An aerodrome that states a circuit
 direction but has no drawn circuit gets a **turn arrow**: from the departure end
 of the take-off runway, 0.25 NM straight on, then a quarter turn toward the
 circuit side, labelled "RWY 06 RH" (aircraft categories named only when the

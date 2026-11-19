@@ -38,6 +38,40 @@ Tap an aerodrome on the map. The card has three tabs.
   outages and notices that are not tied to one aerodrome).
 - See [Weather and NOTAMs](./weather-and-notams.md).
 
+## Local information
+
+Where an aerodrome's circuit, noise rules and local procedures have been
+read from its official publication or its club's own map and checked by
+a person, the card has a **Local information** section and the map draws
+them (from zoom 9, with more detail as you zoom in):
+
+- **Traffic circuits**: the pattern drawn as a line with direction chevrons
+  and a label such as "RWY 03 RH · RWY 21 LH" (right-hand for runway 03,
+  left-hand for 21). Where only the direction is known, a short **turn
+  arrow** from the runway end shows which way to turn after take-off. It
+  says what the source says and never suggests a pattern size. Tap a
+  runway end in the aerodrome card to show only the circuits for it.
+  Circuits for gliders, ultralights and other categories are named as such.
+- **Fly-in routes**: an arrival route a club draws on its own map (for
+  example the way to join from the north) is drawn and switched like a
+  circuit and labelled with its name.
+- **Noise-sensitive areas** and other areas to avoid, with the height they
+  apply below ("below 700 ft AMSL") when the source gives one. Glider,
+  parachute and model-flying areas are drawn in their own colours.
+- **Reporting points** that the base map does not have, as the VFR waypoint
+  triangle with their name, and **holding points** with the direction of
+  the orbit.
+- **Local rules**, hours and PPR remarks as text, each with its source.
+
+Anything read from a drawn chart or map is **dashed** and says how
+accurate the placement is (often a few hundred metres): it shows what the
+publisher draws, not a surveyed boundary. Local information is the
+publisher's and the club's, not an official source: check the official
+publication.
+
+**Report incorrect or missing information** at the bottom of the aerodrome
+card opens an e-mail with the airfield and the app versions filled in.
+
 ## Find a destination
 
 Open **Find dest.** (also available from the route menu) to search

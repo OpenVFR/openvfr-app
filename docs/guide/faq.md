@@ -22,7 +22,7 @@ is no password and no payment. See [Account and sync](./account-and-sync.md).
 
 ## Which countries are covered?
 
-Sweden first, then the Nordics and other European countries.
+Sweden and Denmark. Finland is next, perhaps Norway, then other European countries as open data allows. Want yours? Ask for it at [openvfr.org](https://openvfr.org/#waitlist).
 
 ## Where do I report a problem or contribute?
 

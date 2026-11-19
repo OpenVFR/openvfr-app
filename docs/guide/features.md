@@ -37,6 +37,8 @@ see [Web app and native app](./platforms.md).
 - METAR, TAF, cloud profile, wind gauges. [Weather and NOTAMs](./weather-and-notams.md)
 - NOTAMs on the map and in lists. [Weather and NOTAMs](./weather-and-notams.md)
 - Nearby brief. [Aerodromes and briefing](./aerodromes-and-briefing.md)
+- Local information: traffic circuits, fly-in routes, noise-sensitive areas, reporting and holding points, local rules; report an error. [Aerodromes and briefing](./aerodromes-and-briefing.md#local-information)
+- Official aerodrome charts in the app and on the map. [Aerodromes and briefing](./aerodromes-and-briefing.md#charts)
 - Home airfield.
 
 ## Flying

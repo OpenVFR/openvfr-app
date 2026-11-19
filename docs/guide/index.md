@@ -50,5 +50,5 @@ account (a passkey or an email code).
 
 ## Status
 
-OpenVFR is in beta. Data coverage starts in Sweden and expands to the
-Nordics and other European countries. Features and screens still change.
+OpenVFR is in beta. Data coverage is Sweden and Denmark, and expands to the
+rest of the Nordics and other European countries. Features and screens still change.
