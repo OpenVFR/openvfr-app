@@ -133,6 +133,8 @@ export interface DetailProps {
   rwys?: string
   /** false: a drawn pattern flown both ways (06 right-hand = 24 left-hand), so no direction chevrons. */
   oneWay?: boolean
+  /** A reporting point placed on the landmark of the same name: its label is left off (the landmark's names it). */
+  on_landmark?: boolean
   /** Circuit for one aircraft group only (glider, ultralight, helicopter, gyro; powered = the default colour). */
   aircraft?: string
   provenance?: DetailProvenance
@@ -190,6 +192,8 @@ export function parseAerodromeDetails(raw: unknown): FeatureCollection<Geometry,
         // circuits read off a club chart: which runway ends use them (runway focus), and whether one sense only
         ...(typeof p['rwys'] === 'string' && /^\|([0-9]{2}[LRC]?\|)+$/.test(p['rwys']) ? { rwys: p['rwys'] } : {}),
         ...(typeof p['oneWay'] === 'boolean' ? { oneWay: p['oneWay'] } : {}),
+        // a reporting point sitting on a landmark (same name): the landmark's own label names it
+        ...(p['on_landmark'] === true ? { on_landmark: true } : {}),
         ...(kind === 'circuit_leg' && typeof p['aircraft'] === 'string' && CIRCUIT_GROUPS.includes(p['aircraft'] as CircuitGroup)
           ? { aircraft: p['aircraft'] } : {}),
         ...(provenance ? { provenance } : {}),

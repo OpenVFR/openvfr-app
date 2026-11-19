@@ -118,7 +118,7 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
   { id: 'ad-reporting-point-icon', type: 'symbol', group: 'reportingPoints', minzoom: 9, filter: ['all', POINT, IS_RP],
     layout: { 'icon-image': 'wp-rp', 'icon-size': ['interpolate', ['linear'], ['zoom'], 9, 0.45, 12, 0.7], 'icon-allow-overlap': true },
     paint: { 'icon-opacity': ['case', ['get', 'pending'], 0.6, 1] } },
-  { id: 'ad-reporting-point-label', type: 'symbol', group: 'reportingPoints', minzoom: 10, filter: ['all', POINT, IS_RP, ['!=', ['get', 'label'], '']],
+  { id: 'ad-reporting-point-label', type: 'symbol', group: 'reportingPoints', minzoom: 10, filter: ['all', POINT, IS_RP, ['!=', ['get', 'label'], ''], ['!', ['to-boolean', ['get', 'on_landmark']]]],     // a point on a landmark: the landmark's label names it
     layout: { 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Regular'], 'text-size': 11, 'text-anchor': 'top', 'text-offset': [0, 0.9] },
     paint: { 'text-color': AREA_LABEL_COLOR, 'text-halo-color': HALO, 'text-halo-width': 1.8 } },
   { id: 'ad-details-label', type: 'symbol', group: 'details', minzoom: 10, filter: ['all', ['!=', ['get', 'label'], ''], ['!', ['all', POINT, IS_RP]]],
