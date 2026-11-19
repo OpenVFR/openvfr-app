@@ -90,15 +90,16 @@ describe('arrival routes', () => {
     type: 'Feature' as const, geometry: { type: 'LineString' as const, coordinates: [[13, 55], [13.01, 55.01]] },
     properties: { icao: 'ESTT', kind: 'arrival_route', name: 'Fly-in and join', geometry_quality: 'approximate' },
   }
-  it('is a kind of its own, coloured, drawn as a line and named on the map', () => {
+  it('is its own kind but is drawn, named and switched like a circuit', () => {
     const fc = parseAerodromeDetails({ type: 'FeatureCollection', features: [route] })!
     expect(fc.features[0]!.properties.kind).toBe('arrival_route')
-    expect(DETAIL_KIND_COLOR.arrival_route).toMatch(/^#/)
-    expect(DETAIL_KIND_COLOR.arrival_route).not.toBe(DETAIL_KIND_COLOR.other)                    // not the pale "other" grey
     const data = buildDetailsMapData(fc.features, [])
-    expect(data.features[0]!.properties.label).toBe('Arrival route: Fly-in and join')
-    expect(DETAIL_LAYERS.some(l => l.id === 'ad-details-line-dashed')).toBe(true)                 // approximate lines are dashed
-    expect(staticColorLayers().some(l => l.id === 'ad-details-line-dashed-arrival_route')).toBe(true)   // native: one layer per kind
+    expect(data.features[0]!.properties).toMatchObject({ clabel: 'Fly-in and join', label: '' })
+    const line = DETAIL_LAYERS.find(l => l.id === 'ad-circuit-line-dashed')!
+    expect(line.group).toBe('circuits')
+    expect(JSON.stringify(line.filter)).toContain('arrival_route')
+    expect(JSON.stringify(DETAIL_LAYERS.find(l => l.id === 'ad-details-line-dashed')!.filter)).toContain('arrival_route')   // excluded from the plain-line layer
+    expect(staticColorLayers().some(l => l.id === 'ad-circuit-line-dashed-powered')).toBe(true)     // native
   })
   it('opens a tap popup', () => {
     expect(localAreaInfo({ aerodrome: 'ESTT', kind: 'arrival_route', name: 'Fly-in and join' })).toMatchObject({ kindLabel: 'Arrival route', name: 'Fly-in and join' })

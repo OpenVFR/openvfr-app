@@ -52,8 +52,9 @@ const CIRCUIT_COLOR: Expr = ['match', ['get', 'aircraft'],
   ...CIRCUIT_GROUPS.filter(g => g !== 'powered').flatMap(g => [g, CIRCUIT_GROUP_COLOR[g]]), CIRCUIT_GROUP_COLOR.powered]
 const DASHED: Expr = ['any', ['get', 'approximate'], ['get', 'pending']]
 const IS_AREA: Expr = ['in', ['get', 'kind'], ['literal', [...AREA_KINDS]]]
-const IS_CIRCUIT: Expr = ['==', ['get', 'kind'], 'circuit_leg']
-const NOT_CIRCUIT: Expr = ['!=', ['get', 'kind'], 'circuit_leg']
+// An arrival route (the fly-in drawn on a club map) is drawn, labelled, switched and focused like a circuit
+const IS_CIRCUIT: Expr = ['in', ['get', 'kind'], ['literal', ['circuit_leg', 'arrival_route']]]
+const NOT_CIRCUIT: Expr = ['!', ['in', ['get', 'kind'], ['literal', ['circuit_leg', 'arrival_route']]]]
 const IS_HOLDING: Expr = ['==', ['get', 'kind'], 'holding']
 const LINE: Expr = ['==', ['geometry-type'], 'LineString']
 const POLY: Expr = ['==', ['geometry-type'], 'Polygon']
@@ -120,9 +121,9 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
 ]
 
 const KINDS_OF_GROUP: Record<DetailLayerSpec['group'], DetailKind[]> = {
-  circuits: ['circuit_leg'],
+  circuits: ['circuit_leg', 'arrival_route'],
   holdings: ['holding'],
-  details: (Object.keys(DETAIL_KIND_COLOR) as DetailKind[]).filter(k => k !== 'circuit_leg' && k !== 'holding'),
+  details: (Object.keys(DETAIL_KIND_COLOR) as DetailKind[]).filter(k => k !== 'circuit_leg' && k !== 'arrival_route' && k !== 'holding'),
 }
 
 /**
@@ -194,11 +195,11 @@ export function buildDetailsMapData(
       ...f,
       properties: {
         ...f.properties,
-        label: f.properties.kind !== 'circuit_leg' && f.properties.kind !== 'holding'
-          && (f.geometry.type === 'Point' || AREA_KINDS.has(f.properties.kind as DetailKind) || f.properties.kind === 'arrival_route')
+        label: f.properties.kind !== 'circuit_leg' && f.properties.kind !== 'arrival_route' && f.properties.kind !== 'holding'
+          && (f.geometry.type === 'Point' || AREA_KINDS.has(f.properties.kind as DetailKind) )
           ? (mapAreaLabel(f.properties) ? [mapAreaLabel(f.properties), f.properties.pending ? '(unreviewed)' : null].filter(Boolean).join('\n') : '')
           : '',
-        clabel: f.properties.kind === 'circuit_leg' ? circuitLabel(f.properties.name) : '',
+        clabel: f.properties.kind === 'circuit_leg' || f.properties.kind === 'arrival_route' ? circuitLabel(f.properties.name) : '',
         // flat copies for the tap popup (a rendered feature returns nested values as JSON text)
         limits: formatLimits(f.properties.floor, f.properties.ceiling) ?? '',
         below: belowText(f.properties.floor, f.properties.ceiling) ?? '',
@@ -211,7 +212,7 @@ export function buildDetailsMapData(
 // What an area is, in English, in front of a place name taken from the source ("Central Västerås" alone says nothing).
 const AREA_KIND_LABEL: Partial<Record<string, string>> = {
   noise_sensitive: 'Noise-sensitive area', avoid_area: 'Avoid area', glider_area: 'Glider area',
-  parachute_area: 'Parachute area', model_area: 'Model aircraft area', arrival_route: 'Arrival route',
+  parachute_area: 'Parachute area', model_area: 'Model aircraft area',
 }
 
 // A source's own words for the kind at the start of a name ("Noise-sensitive area Kastberga", "Bullerkänsligt omr Kastberga").
