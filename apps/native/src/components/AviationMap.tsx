@@ -137,7 +137,10 @@ export type AviationMapProps = {
   showModel?:      boolean
   showAerodromes?: boolean
   showNavaids?:    boolean
+  /** Mandatory reporting points (web's 'Mandatory reporting points'). */
   showWaypoints?:  boolean
+  /** VFR reporting points (web's 'VFR reporting points'), also the club-map reporting points of the aerodrome details. */
+  showVfrWaypoints?: boolean
   /** VFR holding points (waypoints named "HOLDING ..."), own toggle like web's 'Holding points'. */
   showHoldings?:   boolean
   /** Traffic circuits of the experimental aerodrome details (web's 'Traffic circuits'). */
@@ -1195,6 +1198,7 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
   showRunways,
   showTerrainColor,
   showWaypoints,
+  showVfrWaypoints,
   showHoldings,
   showCircuits,
   detailsData,
@@ -1598,8 +1602,56 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
             ))}
           </GeoJSONSource>
 
+        {/* Landmarks sit below the details, aerodromes, navaids and reporting points: a church that is also a reporting point must not cover its triangle. */}
+        {/* ── OSM Landmarks ─────────────────────────────────── */}
+        <GeoJSONSource id="osm-landmarks" onPress={() => {}} data={landmarksData}>
+          <Layer
+            id="landmarks-circle"
+            type="symbol"
+            minzoom={10}
+            layout={{
+              visibility: showLandmarks ? 'visible' : 'none',
+              'icon-image': [
+                'match', ['get', 'kind'],
+                'church',      'lmk-church',
+                'mast',        'lmk-mast',
+                'windmill',    'lmk-windmill',
+                'water_tower', 'lmk-water-tower',
+                'chimney',     'lmk-chimney',
+                               'lmk-church',
+              ],
+              'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.3, 14, 0.5],
+              'icon-allow-overlap': true,
+              'icon-ignore-placement': true,
+            }}
+          />
+          {LANDMARK_LABEL_COLORS.map(lk => (
+            <Layer
+              key={lk.k}
+              id={`landmarks-label-${lk.k}`}
+              type="symbol"
+              minzoom={13}
+              filter={['all', ['!=', ['get', 'name'], ''], lk.f] as any}
+              layout={{
+                visibility: showLandmarks ? 'visible' : 'none',
+                'text-field': ['get', 'name'],
+                'text-font': ['Noto Sans Regular'],
+                'text-size': ['interpolate', ['linear'], ['zoom'], 13, 9, 16, 11],
+                'text-anchor': 'top',
+                'text-offset': [0, 0.6],
+                'text-optional': true,
+              }}
+              paint={{
+                'text-color': lk.col,
+                'text-halo-color': 'rgba(255,255,255,0.9)',
+                'text-halo-width': 1.5,
+              }}
+            />
+          ))}
+        </GeoJSONSource>
+
         {/* ── Aerodrome details (experimental): areas, circuits, holding orbits ── */}
-        {detailsData && <AerodromeDetailsLayers data={detailsData} showCircuits={showCircuits} showHoldings={showHoldings} showWaypoints={showWaypoints} />}
+        {detailsData && <AerodromeDetailsLayers data={detailsData} showCircuits={showCircuits} showHoldings={showHoldings} showWaypoints={showVfrWaypoints} />}
 
         {/* ── Aerodromes ───────────────────────────────────── */}
         <GeoJSONSource id="ofm-aerodromes" onPress={() => {}} data={aerodromesData}>
@@ -1796,7 +1848,7 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
             <Layer
               id="waypoints-rp-circle"
               layout={{
-                visibility: showWaypoints ? 'visible' : 'none',
+                visibility: showVfrWaypoints ? 'visible' : 'none',
                 'icon-image': 'wp-rp',
                 'icon-size': ['interpolate', ['linear'], ['zoom'], 8, 0.22, 10, 0.35, 13, 0.5],
                 'icon-allow-overlap': true,
@@ -1812,7 +1864,7 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
               minzoom={9}
               filter={['all', ['==', ['get', 'wp_type'], 'RP'], ['!', IS_HOLDING]]}
               layout={{
-                visibility: showWaypoints ? 'visible' : 'none',
+                visibility: showVfrWaypoints ? 'visible' : 'none',
                 'text-field': ['get', 'id'],
                 'text-size': 9,
                 'text-offset': [0, 1.1],
@@ -1865,53 +1917,6 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
               }}
             />
           </GeoJSONSource>
-        {/* ── OSM Landmarks ─────────────────────────────────── */}
-        <GeoJSONSource id="osm-landmarks" onPress={() => {}} data={landmarksData}>
-          <Layer
-            id="landmarks-circle"
-            type="symbol"
-            minzoom={10}
-            layout={{
-              visibility: showLandmarks ? 'visible' : 'none',
-              'icon-image': [
-                'match', ['get', 'kind'],
-                'church',      'lmk-church',
-                'mast',        'lmk-mast',
-                'windmill',    'lmk-windmill',
-                'water_tower', 'lmk-water-tower',
-                'chimney',     'lmk-chimney',
-                               'lmk-church',
-              ],
-              'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.3, 14, 0.5],
-              'icon-allow-overlap': true,
-              'icon-ignore-placement': true,
-            }}
-          />
-          {LANDMARK_LABEL_COLORS.map(lk => (
-            <Layer
-              key={lk.k}
-              id={`landmarks-label-${lk.k}`}
-              type="symbol"
-              minzoom={13}
-              filter={['all', ['!=', ['get', 'name'], ''], lk.f] as any}
-              layout={{
-                visibility: showLandmarks ? 'visible' : 'none',
-                'text-field': ['get', 'name'],
-                'text-font': ['Noto Sans Regular'],
-                'text-size': ['interpolate', ['linear'], ['zoom'], 13, 9, 16, 11],
-                'text-anchor': 'top',
-                'text-offset': [0, 0.6],
-                'text-optional': true,
-              }}
-              paint={{
-                'text-color': lk.col,
-                'text-halo-color': 'rgba(255,255,255,0.9)',
-                'text-halo-width': 1.5,
-              }}
-            />
-          ))}
-        </GeoJSONSource>
-
         {/* ── Runway threshold designators ─────────────────── */}
         <GeoJSONSource id="ofm-runway-thresholds" data={runwayThresholdsData}>
           <Layer
@@ -1991,6 +1996,7 @@ export const AviationMap = React.memo(function AviationMap({
   showAerodromes = true,
   showNavaids    = true,
   showWaypoints  = true,
+  showVfrWaypoints = false,
   showHoldings   = true,
   showCircuits   = true,
   showObstacles  = true,
@@ -3591,6 +3597,7 @@ export const AviationMap = React.memo(function AviationMap({
           showRunways={showRunways}
           showTerrainColor={showTerrainColor}
           showWaypoints={showWaypoints}
+          showVfrWaypoints={showVfrWaypoints}
           showHoldings={showHoldings}
           showCircuits={showCircuits}
           detailsData={detailsData}

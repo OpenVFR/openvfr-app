@@ -29,8 +29,9 @@ display** sheet, on the web in the **Layers** panel, in the same sections
 (Basemap, Altitude filter, Airspace, Navigation, Terrain, Traffic, Weather).
 
 When you first open the app, Glider areas / sectors, Model flying areas,
-Hillshade, Contour lines, Terrain colour, Air traffic and Wind arrows are off;
-everything else listed above is on. On the web, VFR reporting points are also off to begin with.
+Hillshade, Contour lines, Terrain colour, Air traffic and Wind arrows are off,
+as are VFR reporting points;
+everything else listed above is on.
 
 **Glider areas / sectors** shows the glider sites (the small areas around a field where gliders launch) and, where the national gliding federation publishes them, its soaring sectors (Sweden: Svenska Segelflygförbundet's file, not part of the AIP, so check the current release). **Model flying areas** are a separate layer.
 
@@ -38,8 +39,7 @@ everything else listed above is on. On the web, VFR reporting points are also of
 [Local information](./aerodromes-and-briefing.md#local-information). The reporting points of an airfield's own chart or club map
 (shown as the VFR reporting point triangle) follow the **VFR reporting points** switch.
 
-Differences on native: VOR and NDB are one **Navaids** toggle, mandatory and
-VFR reporting points are one **Reporting points** toggle (on by default), and
+Differences on native: VOR and NDB are one **Navaids** toggle, and
 there is no separate toggle for your places.
 
 ![Web app: the Layers panel with basemap, altitude filter and layer toggles](./images/web-layers-panel.png)

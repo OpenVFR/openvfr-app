@@ -1412,6 +1412,82 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
       ...activityLayers('glider', GLIDER_FILTER, AC.gldrFill, AC.gldrBorder),
       ...activityLayers('model', MODEL_FILTER, AC.modelFill, AC.modelBorder),
 
+      // Landmarks (14, 14b) are defined here, below the navaids, reporting points, aerodromes and obstacles: a church that is also a reporting
+      // point must not cover its triangle.
+      // ── Layer 14: OSM landmark icons (churches, masts, windmills…) ─────────
+      // Symbol layer using canvas-drawn icons registered by registerLandmarkImages()
+      // in MapView's styledata handler. Off by default — toggled via LayerPanel.
+      //
+      // Image IDs (defined in src/utils/landmarkIcons.ts):
+      //   lmk-church  lmk-mast  lmk-windmill  lmk-water-tower  lmk-chimney
+      {
+        id: 'landmarks-icon',
+        type: 'symbol',
+        source: 'osm-landmarks',
+        minzoom: 10,
+        layout: {
+          visibility: 'none',
+          'icon-image': [
+            'match', ['get', 'kind'],
+            'church',      'lmk-church',
+            'mast',        'lmk-mast',
+            'windmill',    'lmk-windmill',
+            'water_tower', 'lmk-water-tower',
+            'chimney',     'lmk-chimney',
+                           'lmk-church',  // fallback (should not occur)
+          ],
+          // Scale icons from small dots at z10 to full-size at z16.
+          'icon-size': [
+            'interpolate', ['linear'], ['zoom'],
+            10, 0.35,
+            12, 0.55,
+            14, 0.80,
+            16, 1.00,
+          ],
+          // Overlap allowed: a church is also a basemap place (its own label and symbol sit at the same spot), and
+          // collision with those hid the landmark icon as soon as the labels appeared when zooming in.
+          'icon-allow-overlap': true,
+          'icon-anchor': 'center',
+        },
+      },
+
+      // ── Layer 14b: OSM landmark name labels (zoom 13+) ─────────────────────
+      // Only shown for features that have a non-empty OSM name tag.
+      {
+        id: 'landmarks-label',
+        type: 'symbol',
+        source: 'osm-landmarks',
+        minzoom: 13,
+        filter: ['!=', ['get', 'name'], ''],
+        layout: {
+          visibility: 'none',
+          'text-field': ['get', 'name'],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': [
+            'interpolate', ['linear'], ['zoom'],
+            13, 9,
+            16, 11,
+          ],
+          'text-anchor': 'top',
+          'text-offset': [0, 0.6],
+          'text-allow-overlap': false,
+          'text-optional': true,
+        },
+        paint: {
+          'text-color': [
+            'match', ['get', 'kind'],
+            'church',      '#455a64',
+            'mast',        '#e65100',
+            'windmill',    '#5d4037',
+            'water_tower', '#00695c',
+            'chimney',     '#bf360c',
+                           '#455a64',
+          ],
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.5,
+        },
+      },
+
       // ── Layer 8: VOR navaids ─────────────────────────────────────────────
       // VOR symbol layer — canvas-drawn hexagon compass-rose (nav-vor).
       // Image registered by registerNavaidImages() in MapView's styledata handler.
@@ -1862,80 +1938,6 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
             'building',     OBSTACLE_COLORS.building,
             'water_tower',  OBSTACLE_COLORS.waterTower,
                             OBSTACLE_COLORS.default,
-          ],
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1.5,
-        },
-      },
-
-      // ── Layer 14: OSM landmark icons (churches, masts, windmills…) ─────────
-      // Symbol layer using canvas-drawn icons registered by registerLandmarkImages()
-      // in MapView's styledata handler. Off by default — toggled via LayerPanel.
-      //
-      // Image IDs (defined in src/utils/landmarkIcons.ts):
-      //   lmk-church  lmk-mast  lmk-windmill  lmk-water-tower  lmk-chimney
-      {
-        id: 'landmarks-icon',
-        type: 'symbol',
-        source: 'osm-landmarks',
-        minzoom: 10,
-        layout: {
-          visibility: 'none',
-          'icon-image': [
-            'match', ['get', 'kind'],
-            'church',      'lmk-church',
-            'mast',        'lmk-mast',
-            'windmill',    'lmk-windmill',
-            'water_tower', 'lmk-water-tower',
-            'chimney',     'lmk-chimney',
-                           'lmk-church',  // fallback (should not occur)
-          ],
-          // Scale icons from small dots at z10 to full-size at z16.
-          'icon-size': [
-            'interpolate', ['linear'], ['zoom'],
-            10, 0.35,
-            12, 0.55,
-            14, 0.80,
-            16, 1.00,
-          ],
-          // Overlap allowed: a church is also a basemap place (its own label and symbol sit at the same spot), and
-          // collision with those hid the landmark icon as soon as the labels appeared when zooming in.
-          'icon-allow-overlap': true,
-          'icon-anchor': 'center',
-        },
-      },
-
-      // ── Layer 14b: OSM landmark name labels (zoom 13+) ─────────────────────
-      // Only shown for features that have a non-empty OSM name tag.
-      {
-        id: 'landmarks-label',
-        type: 'symbol',
-        source: 'osm-landmarks',
-        minzoom: 13,
-        filter: ['!=', ['get', 'name'], ''],
-        layout: {
-          visibility: 'none',
-          'text-field': ['get', 'name'],
-          'text-font': ['Noto Sans Regular'],
-          'text-size': [
-            'interpolate', ['linear'], ['zoom'],
-            13, 9,
-            16, 11,
-          ],
-          'text-anchor': 'top',
-          'text-offset': [0, 0.6],
-          'text-allow-overlap': false,
-          'text-optional': true,
-        },
-        paint: {
-          'text-color': [
-            'match', ['get', 'kind'],
-            'church',      '#455a64',
-            'mast',        '#e65100',
-            'windmill',    '#5d4037',
-            'water_tower', '#00695c',
-            'chimney',     '#bf360c',
-                           '#455a64',
           ],
           'text-halo-color': '#ffffff',
           'text-halo-width': 1.5,

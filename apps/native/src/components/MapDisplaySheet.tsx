@@ -37,7 +37,8 @@ export type LayerState = {
   // Point features
   aerodromes: boolean
   navaids:    boolean
-  waypoints:  boolean
+  waypoints:  boolean     // Mandatory reporting points (web's 'waypointsMRP')
+  vfrWaypoints: boolean   // VFR reporting points (web's 'waypointsRP', off by default)
   // VFR holding points ("HOLDING WEST"), drawn as an orbit -- web's 'waypointsHold' group. On by default.
   holdings:   boolean
   // Traffic circuits of the experimental aerodrome details -- web's 'aerodromeCircuits' group. On by default.
@@ -82,6 +83,7 @@ export const LAYER_DEFAULTS: LayerState = {
   aerodromes: true,
   navaids:    true,
   waypoints:  true,
+  vfrWaypoints: false,
   holdings:   true,
   circuits:   true,
   obstacles:  true,
@@ -120,7 +122,8 @@ const AIRSPACE_GROUPS: Group[] = [
 // keeps the same relative order as the two platforms' respective lists.
 const POINTS_GROUPS: Group[] = [
   { key: 'navaids',    label: 'Navaids',    color: NAVAID_COLORS.vor        },
-  { key: 'waypoints',  label: 'Reporting points', color: WAYPOINT_COLORS.mrp      },
+  { key: 'waypoints',  label: 'Mandatory reporting points', color: WAYPOINT_COLORS.mrp },
+  { key: 'vfrWaypoints', label: 'VFR reporting points', color: WAYPOINT_COLORS.rp },
   { key: 'holdings',   label: 'Holding points', color: WAYPOINT_COLORS.mrp  },
   { key: 'circuits' as const, label: 'Traffic circuits', color: DETAIL_KIND_COLOR.circuit_leg },
   { key: 'aerodromes', label: 'Aerodromes', color: AERODROME_COLORS.default },

@@ -341,6 +341,9 @@ function MapScreenForCountry() {
           ...l,
           ...(legacy !== undefined ? { classCtr: legacy, classCtma: legacy } : {}),
           ...(legacyActivity !== undefined ? { glider: legacyActivity, model: legacyActivity } : {}),
+          // 'waypoints' was one toggle for mandatory and VFR reporting points; the VFR ones are now their own: keep what the user saw.
+          ...((stored as Partial<LayerState>).vfrWaypoints === undefined && (stored as Partial<LayerState>).waypoints !== undefined
+            ? { vfrWaypoints: (stored as Partial<LayerState>).waypoints } : {}),
           ...rest,
         }))
       }
@@ -1886,6 +1889,7 @@ function MapScreenForCountry() {
           showAerodromes={layers.aerodromes}
           showNavaids={layers.navaids}
           showWaypoints={layers.waypoints}
+          showVfrWaypoints={layers.vfrWaypoints}
           showHoldings={layers.holdings}
           showCircuits={layers.circuits}
           showObstacles={layers.obstacles}

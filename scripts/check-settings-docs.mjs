@@ -161,7 +161,7 @@ if (units) {
 const layerSrc = read('apps/native/src/components/MapDisplaySheet.tsx');
 const layerBlock = layerSrc.match(/export const LAYER_DEFAULTS: LayerState = \{([\s\S]*?)\n\}/)?.[1] ?? '';
 const offKeys = [...layerBlock.matchAll(/(\w+):\s*false/g)].map((m) => m[1]).sort();
-const expectedOff = ['contours', 'glider', 'hillshade', 'model', 'satellite', 'terrainColor', 'traffic', 'wind'];
+const expectedOff = ['contours', 'glider', 'hillshade', 'model', 'satellite', 'terrainColor', 'traffic', 'vfrWaypoints', 'wind'];
 if (JSON.stringify(offKeys) !== JSON.stringify(expectedOff)) {
   fail(`native LAYER_DEFAULTS off-by-default layers changed (${offKeys.join(', ')}): update the "first open" paragraph in docs/guide/map-and-layers.md and expectedOff in scripts/check-settings-docs.mjs`);
 }
