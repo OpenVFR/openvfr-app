@@ -6,6 +6,7 @@
  */
 
 import React, { useEffect, useState } from 'react'
+import { formatCallsign } from '@open-vfr/shared/callsignFormat'
 import {
   View, Text, TouchableOpacity, StyleSheet,
 } from 'react-native'
@@ -541,7 +542,7 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
                           <View key={fi} style={styles.freqRow}>
                             <Text style={styles.freqVal}>{fr.freq_mhz.toFixed(3)}</Text>
                             {fr.callsign ? (
-                              <Text style={styles.freqCs}>{fr.callsign}</Text>
+                              <Text style={styles.freqCs}>{formatCallsign(fr.callsign)}</Text>
                             ) : null}
                           </View>
                         ))}

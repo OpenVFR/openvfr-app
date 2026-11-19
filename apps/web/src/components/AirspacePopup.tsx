@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { formatCallsign } from '@open-vfr/shared/callsignFormat'
 import { scrollIntoContainer } from '../utils/scrollIntoContainer'
 import css from './AirspacePopup.module.css'
 import { AIRSPACE_COLORS as AC, CONTROLLED_CLASSES, GLIDING_SECTOR_TYPE, controlledStyle } from '@open-vfr/shared/airspaceColors'
@@ -608,7 +609,7 @@ export default function AirspacePopup({ features, regionalNotams = NO_NOTAM_HITS
                     {f.frequencies.map((fr, fi) => (
                       <span key={fi} className={css.freqItem}>
                         <b>{fr.freq_mhz.toFixed(3)}</b>
-                        {fr.callsign ? ` ${fr.callsign}` : ''}
+                        {fr.callsign ? ` ${formatCallsign(fr.callsign)}` : ''}
                       </span>
                     ))}
                   </div>

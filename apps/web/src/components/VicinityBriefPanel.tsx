@@ -35,6 +35,7 @@
  */
 
 import { useEffect, useState } from 'react'
+import { formatCallsign } from '@open-vfr/shared/callsignFormat'
 import css from './VicinityBriefPanel.module.css'
 import AerodromePopup from './AerodromePopup'
 import type { VicinityAerodrome } from '../hooks/useVicinityAerodromes'
@@ -154,7 +155,7 @@ export default function VicinityBriefPanel({
                           {f.service}
                         </span>
                         <span className={css.freqMhz}>{f.mhz.toFixed(3)}</span>
-                        {f.callsign && <span className={css.freqCallsign}>{f.callsign}</span>}
+                        {f.callsign && <span className={css.freqCallsign}>{formatCallsign(f.callsign)}</span>}
                       </div>
                     ))}
                   </div>

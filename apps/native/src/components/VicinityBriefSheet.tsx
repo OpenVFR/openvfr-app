@@ -28,6 +28,7 @@
  */
 
 import React, { useEffect, useState } from 'react'
+import { formatCallsign } from '@open-vfr/shared/callsignFormat'
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native'
 import { AppIcon } from './AppIcon'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -174,7 +175,7 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
                         <Text style={[styles.svcTxt, { color: svcColor(f.service) }]}>{f.service}</Text>
                       </View>
                       <Text style={styles.freqMhz}>{f.mhz.toFixed(3)}</Text>
-                      {f.callsign && <Text style={styles.freqCallsign} numberOfLines={1}>{f.callsign}</Text>}
+                      {f.callsign && <Text style={styles.freqCallsign} numberOfLines={1}>{formatCallsign(f.callsign)}</Text>}
                     </View>
                   ))}
                 </View>

@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     "./fplMessage": "./src/fplMessage.ts",
+    "./callsignFormat": "./src/callsignFormat.ts",
     "./icaoFlightPlan": "./src/icaoFlightPlan.ts",
     "./assistantHelp": "./src/assistantHelp.ts",
     "./suggestRouteName": "./src/suggestRouteName.ts",

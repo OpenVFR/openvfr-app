@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import css from './AerodromePopup.module.css'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
+import { formatCallsign } from '@open-vfr/shared/callsignFormat'
 import { buildReportProblemMailto } from '@open-vfr/shared/reportProblem'
 import { getCachedTileManifest } from '@open-vfr/shared/tileManifest'
 import { fetchWxResolved, decodeMetar, parseMetarWind, parseMetarClouds, type WxResolved, type WxStationCandidate, type ParsedWind } from '../utils/fetchWx'
@@ -757,7 +758,7 @@ export default function AerodromePopup({
                       <tr key={i}>
                         <td className={css.freqType}>{serviceLabel(f.service)}</td>
                         <td className={css.freqMhz}>{f.freq_mhz.toFixed(3)}</td>
-                        <td className={css.freqCallsign}>{f.callsign}</td>
+                        <td className={css.freqCallsign}>{formatCallsign(f.callsign)}</td>
                       </tr>
                     ))}
                   </tbody>

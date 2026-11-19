@@ -13,6 +13,7 @@
  */
 
 import React, { useEffect, useState } from 'react'
+import { formatCallsign } from '@open-vfr/shared/callsignFormat'
 import * as Application from 'expo-application'
 import { buildReportProblemMailto, REPORT_PROBLEM_EMAIL } from '@open-vfr/shared/reportProblem'
 import { openExternal } from '../utils/openExternal'
@@ -378,7 +379,7 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
                   {freqs.map((f, i) => (
                     <Row
                       key={i}
-                      label={`${SERVICE_LABEL[f.service] ?? f.service}${f.callsign ? ` — ${f.callsign}` : ''}`}
+                      label={`${SERVICE_LABEL[f.service] ?? f.service}${f.callsign ? ` — ${formatCallsign(f.callsign)}` : ''}`}
                       value={f.freq_mhz.toFixed(3)}
                     />
                   ))}
