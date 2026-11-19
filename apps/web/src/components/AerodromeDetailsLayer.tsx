@@ -9,7 +9,7 @@
 import { useEffect } from 'react'
 import type * as maplibregl from 'maplibre-gl'
 import { DETAIL_LAYERS, layerFilter, type CircuitFocus } from '@open-vfr/shared/aerodromeDetailsStyle'
-import { useAerodromeDetailsLayer, useCircuitFocus } from '../utils/aerodromeDetails'
+import { useAerodromeDetailsLayer, useCircuitFocus, useRelevantAerodromes } from '../utils/aerodromeDetails'
 import { OVERLAY_BELOW_LAYERS } from '../styles/map-style'
 
 const SOURCE = 'aerodrome-details'
@@ -19,11 +19,11 @@ function remove(map: maplibregl.Map) {
   if (map.getSource(SOURCE)) map.removeSource(SOURCE)
 }
 
-function apply(map: maplibregl.Map, visible: { circuits: boolean; holdings: boolean; reportingPoints: boolean }, focus: CircuitFocus | null) {
+function apply(map: maplibregl.Map, visible: { circuits: boolean; holdings: boolean; reportingPoints: boolean }, focus: CircuitFocus | null, relevant: readonly string[]) {
   for (const l of DETAIL_LAYERS) {
     if (!map.getLayer(l.id) || l.group === 'details') continue
     map.setLayoutProperty(l.id, 'visibility', visible[l.group] ? 'visible' : 'none')
-    if (l.group === 'circuits') map.setFilter(l.id, layerFilter(l, focus) as maplibregl.FilterSpecification)
+    if (l.group === 'circuits' || l.group === 'reportingPoints') map.setFilter(l.id, layerFilter(l, focus, relevant) as maplibregl.FilterSpecification)
   }
 }
 
@@ -31,6 +31,7 @@ export default function AerodromeDetailsLayer({ map, circuitsVisible, holdingsVi
   { map: maplibregl.Map | null; circuitsVisible: boolean; holdingsVisible: boolean; reportingPointsVisible: boolean }) {
   const fc = useAerodromeDetailsLayer(!!map)
   const focus = useCircuitFocus()
+  const relevant = useRelevantAerodromes()
 
   useEffect(() => {
     if (!map || !fc) return
@@ -50,8 +51,8 @@ export default function AerodromeDetailsLayer({ map, circuitsVisible, holdingsVi
 
   // Layers-panel switches and runway focus; also right after the layers are first added.
   useEffect(() => {
-    if (map && fc) apply(map, { circuits: circuitsVisible, holdings: holdingsVisible, reportingPoints: reportingPointsVisible }, focus)
-  }, [map, fc, circuitsVisible, holdingsVisible, reportingPointsVisible, focus])
+    if (map && fc) apply(map, { circuits: circuitsVisible, holdings: holdingsVisible, reportingPoints: reportingPointsVisible }, focus, relevant)
+  }, [map, fc, circuitsVisible, holdingsVisible, reportingPointsVisible, focus, relevant])
 
   useEffect(() => () => { if (map) remove(map) }, [map])
 

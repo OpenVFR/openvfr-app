@@ -40,6 +40,7 @@ import LocalInfoSection from './LocalInfoSection'
 import ChartsSection from './ChartsSection'
 import type { LocalInfo } from '@open-vfr/shared/aerodromeDetails'
 import { setCircuitFocus, useCircuitFocus } from '../utils/circuitFocus'
+import { setRelevantAerodrome } from '../utils/relevantAerodrome'
 import { CIRCUIT_FOCUS_COLOR } from '@open-vfr/shared/featureColors'
 
 interface Frequency {
@@ -233,6 +234,8 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
     if (feature?.icao && circuitFocus && circuitFocus.aerodrome !== feature.icao) setCircuitFocus(null)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feature?.icao])
+  // The club reporting points of this aerodrome are drawn from now on (they stay after the sheet closes).
+  useEffect(() => { if (feature?.icao) setRelevantAerodrome(feature.icao) }, [feature?.icao])
   const { metar, effectiveWind, allRunwayWindEnds } = deriveWxDisplay(wx, runways, feature?.icao, null, wxSource, ambientWx)
 
   useEffect(() => {

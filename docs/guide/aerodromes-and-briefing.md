@@ -59,9 +59,11 @@ them (from zoom 9, with more detail as you zoom in):
   name, the height it applies below ("Avoid overflight below 700 ft AMSL")
   when the source gives one, and the source; the map itself shows no heights. Glider,
   parachute and model-flying areas are drawn in their own colours.
-- **Reporting points** that the base map does not have, as the VFR waypoint
-  triangle with their name, and **holding points** with the direction of
-  the orbit.
+- **Reporting points** that the base map does not have, as the VFR reporting
+  point triangle with their name (switch: **VFR reporting points**). They are
+  one airfield's arrival points, so they show for the aerodrome whose card
+  you opened last and stay until you open another aerodrome or close the app.
+  **Holding points** show the direction of the orbit.
 - **Local rules**, hours and PPR remarks as text, each with its source.
 
 Anything read from a drawn chart or map is **dashed** and says how

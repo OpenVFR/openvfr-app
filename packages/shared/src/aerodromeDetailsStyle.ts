@@ -177,7 +177,10 @@ export const REPORTING_POINT_LAYER_IDS = DETAIL_LAYERS.filter(l => l.group === '
 
 /** A circuit layer's filter with the runway focus: at the focused aerodrome only circuits for that runway end
  *  (circuits without known runways, such as drawn club legs, stay). Other layers are returned unchanged. */
-export function layerFilter(l: DetailLayerSpec, focus: CircuitFocus | null): Expr {
+export function layerFilter(l: DetailLayerSpec, focus: CircuitFocus | null, relevant?: readonly string[]): Expr {
+  // Reporting points of club maps and charts belong to one airfield's arrivals: drawn only for the aerodromes in `relevant` (the one
+  // whose card was last opened). `undefined` = no such rule (all drawn).
+  if (l.group === 'reportingPoints' && relevant) return ['all', l.filter, ['in', ['get', 'aerodrome'], ['literal', [...relevant]]]]
   if (!focus || l.group !== 'circuits') return l.filter
   return ['all', l.filter, ['any', ['!=', ['get', 'aerodrome'], focus.aerodrome], ['!', ['has', 'rwys']],
     ['in', `|${focus.runway}|`, ['get', 'rwys']]]]

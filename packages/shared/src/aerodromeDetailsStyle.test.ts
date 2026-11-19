@@ -108,6 +108,19 @@ describe('arrival routes', () => {
   })
 })
 
+describe('reporting points of a club map: only for the relevant aerodrome', () => {
+  it('filters by the aerodromes whose card was opened', () => {
+    const icon = DETAIL_LAYERS.find(l => l.id === 'ad-reporting-point-icon')!
+    const f = layerFilter(icon, null, ['ESTT'])
+    expect(JSON.stringify(f)).toContain('"ESTT"')
+    expect(JSON.stringify(f)).toContain('aerodrome')
+    expect(JSON.stringify(layerFilter(icon, null, []))).toContain('"literal",[]')            // none relevant: nothing drawn
+    expect(layerFilter(icon, null)).toEqual(icon.filter)                                       // no rule given: unchanged
+    const circuit = DETAIL_LAYERS.find(l => l.id === CIRCUIT_LAYER_IDS[0])!
+    expect(layerFilter(circuit, null, ['ESTT'])).toEqual(circuit.filter)                       // circuits are not affected
+  })
+})
+
 describe('reporting points of a club map', () => {
   it('are drawn as the VFR reporting-point triangle, in a group of their own, and not twice', () => {
     const icon = DETAIL_LAYERS.find(l => l.id === 'ad-reporting-point-icon')!

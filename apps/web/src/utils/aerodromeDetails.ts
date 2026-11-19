@@ -100,3 +100,26 @@ export function useCircuitFocus(): CircuitFocus | null {
     () => focus,
   )
 }
+
+// Relevant aerodrome: the one whose card was opened last. The reporting points of club maps and charts are drawn only for it (they are
+// one airfield's arrival points, noise for a pilot just passing). Stays after the card closes, until another aerodrome is opened or
+// the app is closed.
+let relevant: string | null = null
+const relevantSubs = new Set<() => void>()
+const NONE: readonly string[] = []
+
+export function setRelevantAerodrome(id: string | null): void {
+  if (id === relevant) return
+  relevant = id
+  cachedList = id ? [id] : NONE
+  relevantSubs.forEach(s => s())
+}
+let cachedList: readonly string[] = NONE
+
+/** The aerodromes whose club reporting points are drawn (a stable array, so React does not re-render for nothing). */
+export function useRelevantAerodromes(): readonly string[] {
+  return useSyncExternalStore(
+    (cb) => { relevantSubs.add(cb); return () => { relevantSubs.delete(cb) } },
+    () => cachedList,
+  )
+}

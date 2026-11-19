@@ -80,6 +80,7 @@ import { cornersBounds } from '@open-vfr/shared/chartDocument'
 import { getChartUiState, useChartFitToken } from '../utils/charts'
 import { buildDetailsMapData, staticColorLayers, layerFilter } from '@open-vfr/shared/aerodromeDetailsStyle'
 import { useCircuitFocus } from '../utils/circuitFocus'
+import { useRelevantAerodromes } from '../utils/relevantAerodrome'
 import { LogManager } from '@maplibre/maplibre-react-native'
 import { createValueStore, useStoreValue, type ValueStore } from '../utils/valueStore'
 import { getNotamCoordinateFocus, subscribeNotamCoordinateFocus, clearNotamCoordinateFocus, type NotamCoordinateFocus } from '@open-vfr/shared/notamCoordinateFocus'
@@ -1147,12 +1148,13 @@ function useAerodromeDetailsData(aerodromesData: string | GeoJSON.GeoJSON, dataT
 const AerodromeDetailsLayers = React.memo(function AerodromeDetailsLayers({ data, showCircuits, showHoldings, showWaypoints }:
   { data: GeoJSON.FeatureCollection; showCircuits: boolean; showHoldings: boolean; showWaypoints: boolean }) {
   const focus = useCircuitFocus()
+  const relevant = useRelevantAerodromes()
   const on = { circuits: showCircuits, holdings: showHoldings, reportingPoints: showWaypoints, details: true }
   return (
     <GeoJSONSource id="aerodrome-details" onPress={() => {}} data={data}>
       {DETAIL_LAYERS_STATIC.map(l => {
         const props = {
-          id: l.id, type: l.type, minzoom: l.minzoom, filter: layerFilter(l, focus),
+          id: l.id, type: l.type, minzoom: l.minzoom, filter: layerFilter(l, focus, relevant),
           layout: { ...(l.layout ?? {}), visibility: on[l.group] ? 'visible' : 'none' }, paint: l.paint,
         } as unknown as React.ComponentProps<typeof Layer>
         return <Layer key={l.id} {...props} />
