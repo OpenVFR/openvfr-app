@@ -5,7 +5,7 @@ sidebar:
   order: 13
 ---
 
-Turn on **Air traffic (ADS-B)** in the layers to see aircraft around you.
+Turn on **Air traffic** in the layers to see aircraft around you.
 
 ## Where it comes from
 

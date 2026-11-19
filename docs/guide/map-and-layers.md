@@ -22,7 +22,7 @@ The map combines a basemap with aviation layers. Open the layer panel (the
 | Aerodromes | Aerodromes, Runways & taxiways, Traffic circuits |
 | Navigation | VOR, NDB, Mandatory reporting points, VFR reporting points, Holding points, Obstacles, Landmarks, Places (web) |
 | Terrain | Land use, Hillshade, Contour lines, Terrain colour |
-| Live | Air traffic (ADS-B), Wind arrows |
+| Live | Air traffic, Wind arrows |
 
 Your choices are remembered. On native the layers are in the **Map
 display** sheet, on the web in the **Layers** panel, in the same sections

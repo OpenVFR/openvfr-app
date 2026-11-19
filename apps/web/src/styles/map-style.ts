@@ -667,7 +667,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     // ADS-B/MLAT traffic from OpenSky Network (server-side poll, SSE broadcast).
     // Off by default: requires OPENSKY_CLIENT_ID + OPENSKY_CLIENT_SECRET on server.
     // Dead-reckoned client-side at 1 s between 65 s server polls.
-    label: 'Air traffic (ADS-B)',
+    label: 'Air traffic',
     cssClass: 'groupTraffic',
     layerIds: ['traffic-urgency-ring', 'traffic-symbols'],
     defaultOn: false,

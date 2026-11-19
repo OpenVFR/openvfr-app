@@ -134,7 +134,7 @@ const POINTS_GROUPS: Group[] = [
 ]
 
 const TRAFFIC_GROUPS: Group[] = [
-  { key: 'traffic', label: 'Air traffic (ADS-B)', color: '#22c55e' },
+  { key: 'traffic', label: 'Air traffic', color: '#22c55e' },
 ]
 
 // Matches web's LAYER_GROUPS 'Live' section ('Wind arrows' entry) --
