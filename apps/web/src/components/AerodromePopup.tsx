@@ -872,8 +872,8 @@ export default function AerodromePopup({
               </div>
             )}
 
-            {/* PPR Remarks */}
-            {p.ppr && remarks.length > 0 && (
+            {/* PPR remarks: also when PPR is not required for an ordinary visit but for some traffic ("PPR for repeated landings") */}
+            {remarks.length > 0 && (
               <div className={css.section}>
                 <div className={css.sectionTitle}>PPR / Restrictions</div>
                 {remarks.map((r, i) => (
