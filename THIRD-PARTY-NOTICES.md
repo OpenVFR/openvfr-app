@@ -98,7 +98,7 @@ Licences: MIT (641), ISC (39), Apache-2.0 (16), BSD-3-Clause (15), BSD-2-Clause 
 | @better-auth/utils | 0.5.1 | MIT | native, web |
 | @better-fetch/fetch | 1.3.3 | MIT | native, web |
 | @esbuild/linux-x64 | 0.28.2 | MIT | native |
-| @expo/cli | 58.1.20 | MIT | native |
+| @expo/cli | 58.1.21 | MIT | native |
 | @expo/code-signing-certificates | 0.0.7 | MIT | native |
 | @expo/config | 58.0.12 | MIT | native |
 | @expo/config-plugins | 58.0.13 | MIT | native |
@@ -115,7 +115,7 @@ Licences: MIT (641), ISC (39), Apache-2.0 (16), BSD-3-Clause (15), BSD-2-Clause 
 | @expo/log-box | 58.0.15 | MIT | native |
 | @expo/log-box-utils | 58.0.2 | MIT | native |
 | @expo/metro | 58.0.0 | MIT | native |
-| @expo/metro-config | 58.0.22 | MIT | native |
+| @expo/metro-config | 58.0.23 | MIT | native |
 | @expo/metro-file-map | 58.0.6 | MIT | native |
 | @expo/modules-macros-linux-x64 | 0.33.0 | MIT | native |
 | @expo/osascript | 2.8.1 | MIT | native |
@@ -124,12 +124,12 @@ Licences: MIT (641), ISC (39), Apache-2.0 (16), BSD-3-Clause (15), BSD-2-Clause 
 | @expo/plist | 0.10.2 | MIT | native |
 | @expo/prebuild-config | 58.0.20 | MIT | native |
 | @expo/require-utils | 58.0.6 | MIT | native |
-| @expo/router-server | 58.0.22 | MIT | native |
+| @expo/router-server | 58.0.23 | MIT | native |
 | @expo/schema-utils | 58.0.3 | MIT | native |
 | @expo/sdk-runtime-versions | 1.0.1 | MIT | native |
 | @expo/spawn-async | 1.8.0 | MIT | native |
 | @expo/sudo-prompt | 9.3.2 | MIT | native |
-| @expo/ui | 58.0.28 | MIT | native |
+| @expo/ui | 58.0.29 | MIT | native |
 | @expo/ws-tunnel | 2.0.1 | MIT | native |
 | @expo/xcpretty | 4.4.7 | MIT | native |
 | @hexagon/base64 | 1.1.28 | MIT | native, web |
@@ -161,7 +161,7 @@ Licences: MIT (641), ISC (39), Apache-2.0 (16), BSD-3-Clause (15), BSD-2-Clause 
 | @noble/curves | 2.0.1 | MIT | web |
 | @noble/hashes | 2.0.1 | MIT | web |
 | @noble/hashes | 2.4.0 | MIT | native, web |
-| @noxcturnal/noxcturnal-linux-x64-gnu | 0.1.12 | MIT | native |
+| @noxcturnal/noxcturnal-linux-x64-gnu | 0.1.14 | MIT | native |
 | @oxc-project/types | 0.154.0 | MIT | native |
 | @oxc-project/types | 0.156.0 | MIT | native |
 | @peculiar/asn1-android | 2.11.1 | MIT | native, web |
@@ -276,7 +276,7 @@ Licences: MIT (641), ISC (39), Apache-2.0 (16), BSD-3-Clause (15), BSD-2-Clause 
 | babel-plugin-react-native-web | 0.21.4 | MIT | native |
 | babel-plugin-syntax-hermes-parser | 0.36.1 | MIT | native |
 | babel-plugin-transform-flow-enums | 0.0.2 | MIT | native |
-| babel-preset-expo | 58.0.25 | MIT | native |
+| babel-preset-expo | 58.0.26 | MIT | native |
 | balanced-match | 4.0.4 | MIT | native |
 | base64-js | 1.5.1 | MIT | native, web |
 | baseline-browser-mapping | 2.11.35 | Apache-2.0 | native |
@@ -371,18 +371,18 @@ Licences: MIT (641), ISC (39), Apache-2.0 (16), BSD-3-Clause (15), BSD-2-Clause 
 | eventemitter3 | 4.0.7 | MIT | web |
 | events | 3.3.0 | MIT | native |
 | expect-type | 1.4.0 | Apache-2.0 | native |
-| expo | 58.0.25 | MIT | native |
+| expo | 58.0.26 | MIT | native |
 | expo-application | 58.1.2 | MIT | native |
 | expo-asset | 58.0.21 | MIT | native |
 | expo-constants | 58.0.16 | MIT | native |
 | expo-crypto | 58.0.8 | MIT | native |
-| expo-dev-client | 58.0.20 | MIT | native |
-| expo-dev-launcher | 58.0.20 | MIT | native |
+| expo-dev-client | 58.0.21 | MIT | native |
+| expo-dev-launcher | 58.0.21 | MIT | native |
 | expo-dev-menu | 58.0.13 | MIT | native |
 | expo-dev-menu-interface | 58.0.2 | MIT | native |
 | expo-device | 58.0.5 | MIT | native |
 | expo-document-picker | 58.0.5 | MIT | native |
-| expo-file-system | 58.0.13 | MIT | native |
+| expo-file-system | 58.0.14 | MIT | native |
 | expo-font | 58.0.12 | MIT | native |
 | expo-json-utils | 58.0.1 | MIT | native |
 | expo-keep-awake | 58.0.4 | MIT | native |
@@ -544,7 +544,7 @@ Licences: MIT (641), ISC (39), Apache-2.0 (16), BSD-3-Clause (15), BSD-2-Clause 
 | node-releases | 2.0.63 | MIT | native |
 | nostr-tools | 2.25.2 | Unlicense | web |
 | nostr-wasm | 0.1.0 | MIT | web |
-| noxcturnal | 0.1.12 | MIT | native |
+| noxcturnal | 0.1.14 | MIT | native |
 | npm-package-arg | 11.0.3 | ISC | native |
 | nth-check | 2.1.1 | BSD-2-Clause | native |
 | nullthrows | 1.1.1 | MIT | native |
@@ -968,7 +968,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @expo/cli@58.1.20
+### @expo/cli@58.1.21
 
 ```text
 The MIT License (MIT)
@@ -1042,7 +1042,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @expo/config-plugins@58.0.13, @expo/config@58.0.12, @expo/devtools@58.0.2, @expo/dom-webview@58.0.2, @expo/fingerprint@0.21.10, @expo/image-utils@0.12.7, @expo/inline-modules@0.2.10, @expo/json-file@11.2.1, @expo/local-build-cache-provider@58.0.12, @expo/log-box-utils@58.0.2, @expo/log-box@58.0.15, @expo/metro-config@58.0.22, @expo/metro-file-map@58.0.6, @expo/modules-macros-linux-x64@0.33.0, @expo/osascript@2.8.1, @expo/package-manager@1.14.2, @expo/plist@0.10.2, @expo/prebuild-config@58.0.20, @expo/router-server@58.0.22, babel-preset-expo@58.0.25, expo-application@58.1.2, expo-asset@58.0.21, expo-constants@58.0.16, expo-crypto@58.0.8, expo-dev-client@58.0.20, expo-dev-launcher@58.0.20, expo-dev-menu-interface@58.0.2, expo-dev-menu@58.0.13, expo-device@58.0.5, expo-document-picker@58.0.5, expo-file-system@58.0.13, expo-font@58.0.12, expo-json-utils@58.0.1, expo-keep-awake@58.0.4, expo-location@58.0.22, expo-manifests@58.0.1, expo-modules-autolinking@58.1.0, expo-modules-cli@0.5.0, expo-modules-core@58.1.0, expo-modules-jsi@58.0.23, expo-modules-macros@0.33.0, expo-navigation-bar@58.0.4, expo-secure-store@58.0.3, expo-sensors@58.0.5, expo-server@58.1.0, expo-sharing@58.0.23, expo-splash-screen@58.0.14, expo-status-bar@58.0.5, expo-system-ui@58.0.7, expo-task-manager@58.0.14, expo-updates-interface@58.0.1, expo@58.0.25, unimodules-app-loader@58.0.2
+### @expo/config-plugins@58.0.13, @expo/config@58.0.12, @expo/devtools@58.0.2, @expo/dom-webview@58.0.2, @expo/fingerprint@0.21.10, @expo/image-utils@0.12.7, @expo/inline-modules@0.2.10, @expo/json-file@11.2.1, @expo/local-build-cache-provider@58.0.12, @expo/log-box-utils@58.0.2, @expo/log-box@58.0.15, @expo/metro-config@58.0.23, @expo/metro-file-map@58.0.6, @expo/modules-macros-linux-x64@0.33.0, @expo/osascript@2.8.1, @expo/package-manager@1.14.2, @expo/plist@0.10.2, @expo/prebuild-config@58.0.20, @expo/router-server@58.0.23, babel-preset-expo@58.0.26, expo-application@58.1.2, expo-asset@58.0.21, expo-constants@58.0.16, expo-crypto@58.0.8, expo-dev-client@58.0.21, expo-dev-launcher@58.0.21, expo-dev-menu-interface@58.0.2, expo-dev-menu@58.0.13, expo-device@58.0.5, expo-document-picker@58.0.5, expo-file-system@58.0.14, expo-font@58.0.12, expo-json-utils@58.0.1, expo-keep-awake@58.0.4, expo-location@58.0.22, expo-manifests@58.0.1, expo-modules-autolinking@58.1.0, expo-modules-cli@0.5.0, expo-modules-core@58.1.0, expo-modules-jsi@58.0.23, expo-modules-macros@0.33.0, expo-navigation-bar@58.0.4, expo-secure-store@58.0.3, expo-sensors@58.0.5, expo-server@58.1.0, expo-sharing@58.0.23, expo-splash-screen@58.0.14, expo-status-bar@58.0.5, expo-system-ui@58.0.7, expo-task-manager@58.0.14, expo-updates-interface@58.0.1, expo@58.0.26, unimodules-app-loader@58.0.2
 
 ```text
 The MIT License (MIT)
@@ -2110,7 +2110,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### @noxcturnal/noxcturnal-linux-x64-gnu@0.1.12, noxcturnal@0.1.12
+### @noxcturnal/noxcturnal-linux-x64-gnu@0.1.14, noxcturnal@0.1.14
 
 ```text
 The MIT License (MIT)
@@ -15830,7 +15830,7 @@ SOFTWARE.
 Used under the licence declared in their `package.json`:
 
 - @esbuild/linux-x64@0.28.2: MIT (https://github.com/evanw/esbuild#readme)
-- @expo/ui@58.0.28: MIT (https://docs.expo.dev/versions/latest/sdk/ui/)
+- @expo/ui@58.0.29: MIT (https://docs.expo.dev/versions/latest/sdk/ui/)
 - @napi-rs/canvas-linux-x64-gnu@1.1.0: MIT (https://github.com/Brooooooklyn/canvas#readme)
 - @protomaps/basemaps@5.7.2: BSD-3-Clause (https://github.com/protomaps/basemaps)
 - @react-native-async-storage/async-storage@3.1.1: MIT (https://github.com/react-native-async-storage/async-storage#readme)
