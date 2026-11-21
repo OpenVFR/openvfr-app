@@ -78,9 +78,11 @@ import { ChartOverlayLayer } from './ChartOverlay'
 import { overlayGeometry } from '@open-vfr/shared/chartsIndex'
 import { cornersBounds } from '@open-vfr/shared/chartDocument'
 import { getChartUiState, useChartFitToken } from '../utils/charts'
-import { buildDetailsMapData, staticColorLayers, layerFilter } from '@open-vfr/shared/aerodromeDetailsStyle'
+import { buildDetailsMapData, staticColorLayers, layerFilter, landmarkLabelFilter, landmarkNamesTakenByPoints } from '@open-vfr/shared/aerodromeDetailsStyle'
 import { useCircuitFocus } from '../utils/circuitFocus'
 import { useRelevantAerodromes } from '../utils/relevantAerodrome'
+import { setCameraView, useCameraView } from '../utils/cameraView'
+import { displaceReportingPoints, landmarkRadius, obstacleRadius, type Blocker } from '@open-vfr/shared/symbolDeclutter'
 import { LogManager } from '@maplibre/maplibre-react-native'
 import { createValueStore, useStoreValue, type ValueStore } from '../utils/valueStore'
 import { getNotamCoordinateFocus, subscribeNotamCoordinateFocus, clearNotamCoordinateFocus, type NotamCoordinateFocus } from '@open-vfr/shared/notamCoordinateFocus'
@@ -1145,13 +1147,40 @@ function useAerodromeDetailsData(aerodromesData: string | GeoJSON.GeoJSON, dataT
   }, [details, aerodromesData, loadedAerodromes])
 }
 
-const AerodromeDetailsLayers = React.memo(function AerodromeDetailsLayers({ data, showCircuits, showHoldings, showWaypoints }:
-  { data: GeoJSON.FeatureCollection; showCircuits: boolean; showHoldings: boolean; showWaypoints: boolean }) {
+/** Landmark and obstacle symbols the map draws near the camera: the places a reporting point is moved clear of (symbolDeclutter). */
+function symbolBlockers(landmarks: GeoJSON.FeatureCollection | null | undefined, obstacles: GeoJSON.FeatureCollection | null | undefined,
+  showLandmarks: boolean, showObstacles: boolean, cam: { lon: number; lat: number; zoom: number }): Blocker[] {
+  const out: Blocker[] = []
+  const span = 0.9 * 360 / 2 ** cam.zoom * 2              // about two screen widths (degrees), generous: the exact cut is the screen in displaceReportingPoints
+  const near = (lon: number, lat: number) => Math.abs(lon - cam.lon) < span && Math.abs(lat - cam.lat) < span
+  const add = (fc: GeoJSON.FeatureCollection | null | undefined, r: number) => {
+    for (const f of fc?.features ?? []) {
+      if (f.geometry?.type !== 'Point') continue
+      const [lon, lat] = f.geometry.coordinates
+      if (near(lon, lat)) out.push({ lon, lat, r })
+    }
+  }
+  if (cam.zoom >= 10 && showLandmarks) add(landmarks, landmarkRadius(cam.zoom))
+  if (cam.zoom >= 11 && showObstacles) add(obstacles, obstacleRadius(cam.zoom))
+  return out
+}
+
+const AerodromeDetailsLayers = React.memo(function AerodromeDetailsLayers({ data, showCircuits, showHoldings, showWaypoints, landmarks, obstacles, showLandmarks, showObstacles }:
+  { data: GeoJSON.FeatureCollection; showCircuits: boolean; showHoldings: boolean; showWaypoints: boolean
+    landmarks?: GeoJSON.FeatureCollection | null; obstacles?: GeoJSON.FeatureCollection | null; showLandmarks: boolean; showObstacles: boolean }) {
   const focus = useCircuitFocus()
   const relevant = useRelevantAerodromes()
+  const cam = useCameraView()
+  const { width, height } = useWindowDimensions()
   const on = { circuits: showCircuits, holdings: showHoldings, reportingPoints: showWaypoints, details: true }
+  // The reporting points moved clear of the landmark and obstacle symbols for this camera (labels find room by themselves)
+  const shown = React.useMemo(() => {
+    if (!cam || !showWaypoints) return data
+    return displaceReportingPoints(data as never, symbolBlockers(landmarks, obstacles, showLandmarks, showObstacles, cam),
+      { ...cam, width, height }) as unknown as GeoJSON.FeatureCollection
+  }, [data, cam, width, height, landmarks, obstacles, showLandmarks, showObstacles, showWaypoints])
   return (
-    <GeoJSONSource id="aerodrome-details" onPress={() => {}} data={data}>
+    <GeoJSONSource id="aerodrome-details" onPress={() => {}} data={shown}>
       {DETAIL_LAYERS_STATIC.map(l => {
         const props = {
           id: l.id, type: l.type, minzoom: l.minzoom, filter: layerFilter(l, focus, relevant),
@@ -1208,6 +1237,10 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
   waypointsData,
   ownAltFt,
 }: any) {
+  // A landmark a drawn reporting point of the same name sits on: the point's label names it, the landmark's own is left off (one always stays)
+  const relevantForLabels = useRelevantAerodromes()
+  const landmarkNamesTaken = React.useMemo(
+    () => landmarkNamesTakenByPoints(detailsData, relevantForLabels, !!showVfrWaypoints), [detailsData, relevantForLabels, showVfrWaypoints])
   const ceilingFilter = ['<=', ['get', 'lower_ft'], airspaceCeilingFt]
 
   // Per-class filters combined with ceiling
@@ -1633,14 +1666,15 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
               id={`landmarks-label-${lk.k}`}
               type="symbol"
               minzoom={13}
-              filter={['all', ['!=', ['get', 'name'], ''], lk.f] as any}
+              filter={landmarkLabelFilter(['all', ['!=', ['get', 'name'], ''], lk.f] as any, landmarkNamesTaken) as any}
               layout={{
                 visibility: showLandmarks ? 'visible' : 'none',
                 'text-field': ['get', 'name'],
                 'text-font': ['Noto Sans Regular'],
                 'text-size': ['interpolate', ['linear'], ['zoom'], 13, 9, 16, 11],
-                'text-anchor': 'top',
-                'text-offset': [0, 0.6],
+                'text-variable-anchor': ['top', 'bottom', 'right', 'left', 'top-right', 'bottom-right', 'top-left', 'bottom-left'],
+                'text-radial-offset': 0.7,
+                'text-justify': 'auto',
                 'text-optional': true,
               }}
               paint={{
@@ -1653,7 +1687,8 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
         </GeoJSONSource>
 
         {/* ── Aerodrome details (experimental): areas, circuits, holding orbits ── */}
-        {detailsData && <AerodromeDetailsLayers data={detailsData} showCircuits={showCircuits} showHoldings={showHoldings} showWaypoints={showVfrWaypoints} />}
+        {detailsData && <AerodromeDetailsLayers data={detailsData} showCircuits={showCircuits} showHoldings={showHoldings} showWaypoints={showVfrWaypoints}
+          landmarks={landmarksData} obstacles={obstaclesData} showLandmarks={!!showLandmarks} showObstacles={!!showObstacles} />}
 
         {/* ── Aerodromes ───────────────────────────────────── */}
         <GeoJSONSource id="ofm-aerodromes" onPress={() => {}} data={aerodromesData}>
@@ -2486,6 +2521,7 @@ export const AviationMap = React.memo(function AviationMap({
         onAutoZoomPausedChange?.(true)
       }
       camStateRef.current = { lat: center[1], lng: center[0], zoom: zoom ?? 5, heading: bearing ?? 0 }
+      setCameraView({ lon: center[0], lat: center[1], zoom: zoom ?? 5, bearing: bearing ?? 0, pitch: (e.nativeEvent as { pitch?: number }).pitch ?? 0 })
       bearingStore?.set(bearing ?? 0)
       infoBarRef.current?.setCamera(center[1], zoom ?? 5)
       // Pilot took manual control of the map -- stop fighting the gesture

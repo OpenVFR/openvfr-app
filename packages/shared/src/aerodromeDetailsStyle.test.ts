@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DETAIL_LAYERS, staticColorLayers, layerFilter, buildDetailsMapData, circuitLabel, mapAreaLabel, belowText, CIRCUIT_LAYER_IDS } from './aerodromeDetailsStyle'
+import { DETAIL_LAYERS, staticColorLayers, layerFilter, buildDetailsMapData, circuitLabel, mapAreaLabel, belowText, CIRCUIT_LAYER_IDS, LABEL_ANCHORS, landmarkLabelFilter, landmarkNamesTakenByPoints } from './aerodromeDetailsStyle'
 import { DETAIL_KIND_COLOR, CIRCUIT_GROUP_COLOR, parseAerodromeDetails, schematicCircuitFeatures, localAreaInfo } from './aerodromeDetails'
 
 describe('aerodromeDetailsStyle', () => {
@@ -147,5 +147,28 @@ describe('area labels on the map', () => {
     const [f] = buildDetailsMapData([area('Kastberga', true)], []).features
     expect(f!.properties.label).toBe('Kastberga\n(unreviewed)')
     expect(buildDetailsMapData([area('Kastberga', false)], []).features[0]!.properties.label).toBe('Kastberga')
+  })
+})
+
+describe('reporting point labels and landmark labels', () => {
+  const pt = (name: string, over: Record<string, unknown> = {}) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [13, 55] },
+    properties: { kind: 'reporting_point', name, aerodrome: 'ESTT', on_landmark: true, ...over } }) as never
+  it('names of landmarks a drawn point sits on: only relevant aerodromes, only when the layer is on', () => {
+    const fc = { features: [pt('Rängs kyrka'), pt('Elsewhere', { aerodrome: 'ESMI' }), pt('Free', { on_landmark: false })] }
+    expect(landmarkNamesTakenByPoints(fc, ['ESTT'], true)).toEqual(['Rängs kyrka'])
+    expect(landmarkNamesTakenByPoints(fc, [], true)).toEqual([])
+    expect(landmarkNamesTakenByPoints(fc, ['ESTT'], false)).toEqual([])
+    expect(landmarkNamesTakenByPoints(null, ['ESTT'], true)).toEqual([])
+  })
+  it('the landmark label filter drops only the taken names', () => {
+    const base = ['!=', ['get', 'name'], ''] as never
+    expect(landmarkLabelFilter(base, [])).toEqual(base)
+    expect(landmarkLabelFilter(base, ['Rängs kyrka'])).toEqual(['all', base, ['!', ['in', ['get', 'name'], ['literal', ['Rängs kyrka']]]]])
+  })
+  it('the point label always looks for room: variable anchors, no fixed spot, and it is not left off for a landmark', () => {
+    const l = DETAIL_LAYERS.find(x => x.id === 'ad-reporting-point-label')!
+    expect((l.layout as Record<string, unknown>)['text-variable-anchor']).toEqual(LABEL_ANCHORS)
+    expect((l.layout as Record<string, unknown>)['text-anchor']).toBeUndefined()
+    expect(JSON.stringify(l.filter)).not.toContain('on_landmark')
   })
 })

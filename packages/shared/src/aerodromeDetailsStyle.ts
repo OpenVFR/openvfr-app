@@ -63,6 +63,9 @@ const POINT: Expr = ['==', ['geometry-type'], 'Point']
 const DRAWN: Expr = ['!=', ['get', 'schematic'], true]
 
 /** Layers in drawing order (bottom first). */
+/** The sides a label tries, in order, round its symbol. */
+export const LABEL_ANCHORS = ['top', 'bottom', 'right', 'left', 'top-right', 'bottom-right', 'top-left', 'bottom-left']
+
 export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
   // Areas, taxiways, parking, extra reporting points
   { id: 'ad-details-fill', type: 'fill', group: 'details', minzoom: DETAILS_MIN_ZOOM, filter: ['all', POLY, IS_AREA],
@@ -118,8 +121,11 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
   { id: 'ad-reporting-point-icon', type: 'symbol', group: 'reportingPoints', minzoom: 9, filter: ['all', POINT, IS_RP],
     layout: { 'icon-image': 'wp-rp', 'icon-size': ['interpolate', ['linear'], ['zoom'], 9, 0.45, 12, 0.7], 'icon-allow-overlap': true },
     paint: { 'icon-opacity': ['case', ['get', 'pending'], 0.6, 1] } },
-  { id: 'ad-reporting-point-label', type: 'symbol', group: 'reportingPoints', minzoom: 10, filter: ['all', POINT, IS_RP, ['!=', ['get', 'label'], ''], ['!', ['to-boolean', ['get', 'on_landmark']]]],     // a point on a landmark: the landmark's label names it
-    layout: { 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Regular'], 'text-size': 11, 'text-anchor': 'top', 'text-offset': [0, 0.9] },
+  // The name looks for room: below the symbol, else above, beside it, or at a corner, so it does not collide with an obstacle or landmark label.
+  // A point on a landmark of the same name keeps this label and the landmark's own label is left off (`landmarkLabelFilter`): one of the two always stays.
+  { id: 'ad-reporting-point-label', type: 'symbol', group: 'reportingPoints', minzoom: 10, filter: ['all', POINT, IS_RP, ['!=', ['get', 'label'], '']],
+    layout: { 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Regular'], 'text-size': 11, 'text-variable-anchor': LABEL_ANCHORS,
+      'text-radial-offset': 0.9, 'text-justify': 'auto' },
     paint: { 'text-color': AREA_LABEL_COLOR, 'text-halo-color': HALO, 'text-halo-width': 1.8 } },
   { id: 'ad-details-label', type: 'symbol', group: 'details', minzoom: 10, filter: ['all', ['!=', ['get', 'label'], ''], ['!', ['all', POINT, IS_RP]]],
     layout: { 'text-field': ['get', 'label'], 'text-font': CIRCUIT_LABEL_FONT, 'text-size': 12, 'text-max-width': 12,
@@ -184,6 +190,24 @@ export function layerFilter(l: DetailLayerSpec, focus: CircuitFocus | null, rele
   if (!focus || l.group !== 'circuits') return l.filter
   return ['all', l.filter, ['any', ['!=', ['get', 'aerodrome'], focus.aerodrome], ['!', ['has', 'rwys']],
     ['in', `|${focus.runway}|`, ['get', 'rwys']]]]
+}
+
+/** Names of landmarks (churches, masts) that a drawn reporting point of the same name sits on, for the points that are drawn now (an aerodrome in
+ *  `relevant`, the reporting-point layer switched on): the point's label names the place, so the landmark's own label is left off. */
+export function landmarkNamesTakenByPoints(fc: { features: Feature[] } | null | undefined, relevant: readonly string[], visible: boolean): string[] {
+  if (!fc || !visible) return []
+  const out = new Set<string>()
+  for (const f of fc.features) {
+    const p = (f.properties ?? {}) as Record<string, unknown>
+    if (p['kind'] === 'reporting_point' && p['on_landmark'] === true && typeof p['name'] === 'string' && p['name']
+        && typeof p['aerodrome'] === 'string' && relevant.includes(p['aerodrome'])) out.add(p['name'])
+  }
+  return [...out]
+}
+
+/** A landmark label layer's filter without the landmarks a drawn reporting point names. */
+export function landmarkLabelFilter(base: Expr, taken: readonly string[]): Expr {
+  return taken.length ? ['all', base, ['!', ['in', ['get', 'name'], ['literal', [...taken]]]]] : base
 }
 
 const idOf = (f: Feature): string | null => {

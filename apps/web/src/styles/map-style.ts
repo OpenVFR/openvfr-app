@@ -1468,8 +1468,10 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
             13, 9,
             16, 11,
           ],
-          'text-anchor': 'top',
-          'text-offset': [0, 0.6],
+          // looks for room round the symbol (below, above, beside) instead of giving up when the first spot is taken
+          'text-variable-anchor': ['top', 'bottom', 'right', 'left', 'top-right', 'bottom-right', 'top-left', 'bottom-left'],
+          'text-radial-offset': 0.7,
+          'text-justify': 'auto',
           'text-allow-overlap': false,
           'text-optional': true,
         },

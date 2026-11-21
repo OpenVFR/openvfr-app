@@ -51,6 +51,7 @@
     "./airspeed": "./src/airspeed.ts",
     "./pohImport": "./src/pohImport.ts",
     "./fuelTypes": "./src/fuelTypes.ts",
+    "./symbolDeclutter": "./src/symbolDeclutter.ts",
     "./fuelStops": "./src/fuelStops.ts",
     "./routeIdentifiers": "./src/routeIdentifiers.ts",
     "./legAltitudes": "./src/legAltitudes.ts",
