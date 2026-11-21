@@ -49,15 +49,15 @@ function RuleGroups({ groups, styles }: { groups: RuleGroup[]; styles: ReturnTyp
       {groups.map(g => {
         const key = g.lines.filter(l => l.key), rest = g.lines.filter(l => !l.key)
         const fold = rest.length >= 2          // a single line is not worth a toggle
-        const shown = open[g.title] || !fold ? g.lines : key
+        const shown = open[g.id] || !fold ? g.lines : key
         return (
-          <View key={g.title} style={styles.ruleGroup}>
+          <View key={g.id} style={styles.ruleGroup}>
             <Text style={styles.ruleGroupTitle}>{g.title}</Text>
             {shown.map((l, i) => <Text key={i} style={[styles.item, l.key && styles.keyRule]}>{l.text}</Text>)}
             {fold && (
-              <TouchableOpacity onPress={() => setOpen(o => ({ ...o, [g.title]: !o[g.title] }))} accessibilityRole="button"
-                accessibilityState={{ expanded: !!open[g.title] }} accessibilityLabel={`${g.title}: ${open[g.title] ? 'show less' : 'show all'}`}>
-                <Text style={styles.more}>{open[g.title] ? 'Show less' : key.length ? `${rest.length} more` : `Show ${rest.length}`}</Text>
+              <TouchableOpacity onPress={() => setOpen(o => ({ ...o, [g.id]: !o[g.id] }))} accessibilityRole="button"
+                accessibilityState={{ expanded: !!open[g.id] }} accessibilityLabel={`${g.title}: ${open[g.id] ? 'show less' : 'show all'}`}>
+                <Text style={styles.more}>{open[g.id] ? 'Show less' : key.length ? `${rest.length} more` : `Show ${rest.length}`}</Text>
               </TouchableOpacity>
             )}
           </View>

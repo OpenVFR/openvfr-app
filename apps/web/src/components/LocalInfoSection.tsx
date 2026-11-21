@@ -55,15 +55,15 @@ function RuleGroups({ groups }: { groups: RuleGroup[] }) {
       {groups.map(g => {
         const key = g.lines.filter(l => l.key), rest = g.lines.filter(l => !l.key)
         const fold = rest.length >= 2          // a single line is not worth a toggle
-        const shown = open[g.title] || !fold ? g.lines : key
+        const shown = open[g.id] || !fold ? g.lines : key
         return (
-          <div key={g.title} className={css.ruleGroup}>
+          <div key={g.id} className={css.ruleGroup}>
             <div className={css.ruleGroupTitle}>{g.title}</div>
             {shown.length > 0 && <ul className={css.list}>{shown.map((l, i) => <li key={i} className={l.key ? css.keyRule : undefined}>{l.text}</li>)}</ul>}
             {fold && (
-              <button type="button" className={css.more} aria-expanded={!!open[g.title]}
-                onClick={() => setOpen(o => ({ ...o, [g.title]: !o[g.title] }))}>
-                {open[g.title] ? 'Show less' : `${key.length ? `${rest.length} more` : `Show ${rest.length}`}`}
+              <button type="button" className={css.more} aria-expanded={!!open[g.id]}
+                onClick={() => setOpen(o => ({ ...o, [g.id]: !o[g.id] }))}>
+                {open[g.id] ? 'Show less' : `${key.length ? `${rest.length} more` : `Show ${rest.length}`}`}
               </button>
             )}
           </div>

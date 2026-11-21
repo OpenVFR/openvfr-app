@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   parseAerodromeDetails, localInfo, formatCircuit, formatLimits, circuitTurnArrow, schematicCircuitFeatures, hasLocalInfo, holdingOrbit,
-  holdingOrbitFeatures, ORBIT_RADIUS_NM, localAreaInfo,
+  holdingOrbitFeatures, ORBIT_RADIUS_NM, localAreaInfo, RULE_GROUP_IDS, RULE_GROUP_LABEL,
   TURN_STRAIGHT_NM, TURN_RADIUS_NM, type DetailFeature,
 } from './aerodromeDetails'
 import type { LineString } from 'geojson'
@@ -204,6 +204,12 @@ describe('grouped local rules', () => {
     const g = localInfo({ local_rules: many.map(x => x.text), local_rule_groups: many }).localRuleGroups!
     expect(g.map(x => x.title)).toEqual(['AIP', 'Obstacles', 'Noise and neighbours', 'Animals', 'Procedures', 'Other'])
     expect(g[2].lines).toEqual([{ text: 'No overflight of the farm', key: true }, { text: 'Avoid the red areas', key: false }])
+  })
+  it('every group has a stable id apart from its text, unknown headings keep their own', () => {
+    const g = localInfo({ local_rule_groups: [...many, line('Fuel stop', 'Self service')] }).localRuleGroups!
+    expect(g.map(x => x.id)).toEqual(['aip', 'obstacles', 'noise_neighbours', 'animals', 'procedures', 'other', 'Fuel stop'])
+    expect(g.map(x => x.title)).toEqual(['AIP', 'Obstacles', 'Noise and neighbours', 'Animals', 'Procedures', 'Other', 'Fuel stop'])
+    for (const id of RULE_GROUP_IDS) expect(RULE_GROUP_LABEL[id]).toBeTruthy()
   })
   it('a short list stays plain, and so does one without groups', () => {
     expect(localInfo({ local_rules: ['a'], local_rule_groups: many.slice(0, 3) }).localRuleGroups).toBeNull()

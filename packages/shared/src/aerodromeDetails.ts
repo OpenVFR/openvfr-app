@@ -221,11 +221,26 @@ export interface AreaInfo { kind: DetailKind; name: string | null; remark: strin
 
 /** A list this long is shown grouped and folded; a shorter one is shown whole as a plain list. */
 export const RULES_GROUPED_MIN = 7
-const RULE_GROUP_ORDER = ['AIP', 'Arrival and circuit', 'Obstacles', 'Noise and neighbours', 'Animals', 'Procedures', 'Other']
+/** Stable ids of the local-rule headings, in display order. Logic (grouping, sorting, fold state) uses the id; the English text is a label only. */
+export const RULE_GROUP_IDS = ['aip', 'arrival_circuit', 'obstacles', 'noise_neighbours', 'animals', 'procedures', 'other'] as const
+export type RuleGroupId = (typeof RULE_GROUP_IDS)[number]
+export const RULE_GROUP_LABEL: Record<RuleGroupId, string> = {
+  aip: 'AIP', arrival_circuit: 'Arrival and circuit', obstacles: 'Obstacles', noise_neighbours: 'Noise and neighbours',
+  animals: 'Animals', procedures: 'Procedures', other: 'Other',
+}
+/** The headings the curated data carries as text, to their ids. A heading not listed here is kept as its own group under its own text, after the known ones. */
+const RULE_GROUP_OF_TITLE: Record<string, RuleGroupId> = Object.fromEntries(
+  RULE_GROUP_IDS.map(id => [RULE_GROUP_LABEL[id], id]),
+) as Record<string, RuleGroupId>
 
 /** Local rules under a heading (from the tidy version, openvfr-infra compact_rules.py): `key` lines are shown up front, the
  *  others fold away under the heading. */
-export interface RuleGroup { title: string; lines: { text: string; key: boolean }[] }
+export interface RuleGroup {
+  /** A `RuleGroupId`, or the heading's own text for a heading this version does not know. */
+  id: string
+  title: string
+  lines: { text: string; key: boolean }[]
+}
 
 export interface LocalInfo {
   circuits: CircuitInfo[]
@@ -264,14 +279,15 @@ function ruleGroups(v: unknown): RuleGroup[] | null {
     const o = r as Record<string, unknown>
     const t = text(o['text'], 400)
     if (!t) continue
-    const title = text(o['title'], 40) ?? 'Other'
-    if (!by.has(title)) by.set(title, { title, lines: [] })
-    by.get(title)!.lines.push({ text: t, key: o['key'] === true })
+    const title = text(o['title'], 40) ?? RULE_GROUP_LABEL.other
+    const id = RULE_GROUP_OF_TITLE[title] ?? title
+    if (!by.has(id)) by.set(id, { id, title, lines: [] })
+    by.get(id)!.lines.push({ text: t, key: o['key'] === true })
     count++
   }
   if (count < RULES_GROUPED_MIN) return null
-  const rank = (t: string) => { const i = RULE_GROUP_ORDER.indexOf(t); return i < 0 ? RULE_GROUP_ORDER.length - 1 : i }
-  return [...by.values()].sort((a, b) => rank(a.title) - rank(b.title))
+  const rank = (id: string) => { const i = (RULE_GROUP_IDS as readonly string[]).indexOf(id); return i < 0 ? RULE_GROUP_IDS.length - 1 : i }
+  return [...by.values()].sort((a, b) => rank(a.id) - rank(b.id))
 }
 
 /** The local-information fields of an aerodrome's properties (absent fields are empty). */
@@ -479,7 +495,6 @@ export function holdingOrbitFeatures(details: readonly DetailFeature[]): DetailF
 
 const SIDE = { left: 'LH', right: 'RH' } as const
 const GROUP_LABEL: Record<string, string> = { glider: 'gliders', ultralight: 'ultralights', gyro: 'gyros', helicopter: 'helicopters' }
-const GROUP_OF_LABEL: Record<string, CircuitGroup> = { gliders: 'glider', ultralights: 'ultralight', gyros: 'gyro', helicopters: 'helicopter' }
 
 /**
  * Turn arrows for aerodromes that state a circuit direction but have no circuit drawn in the details file.
@@ -500,23 +515,22 @@ export function schematicCircuitFeatures(
     const info = localInfo(p)
     if (!info.circuits.length) continue
     const runways = list(p['runways']) as RunwayLike[]
-    const groups = new Map<string, { arrow: TurnArrow; direction: 'left' | 'right'; groups: Set<string>; forAll: boolean }>()
+    const groups = new Map<string, { arrow: TurnArrow; direction: 'left' | 'right'; groups: Set<CircuitGroup>; forAll: boolean }>()
     for (const c of info.circuits.filter(isDrawnCircuit)) {
       const arrow = circuitTurnArrow(runways, c)
       if (!arrow) continue
       const hit = findThreshold(runways, c)!
       const key = `${hit.r}|${hit.i}|${c.direction}`
-      const g = groups.get(key) ?? { arrow, direction: c.direction!, groups: new Set<string>(), forAll: false }
-      const label = c.aircraft ? GROUP_LABEL[c.aircraft] : undefined
-      if (label) g.groups.add(label); else g.forAll = true
+      const g = groups.get(key) ?? { arrow, direction: c.direction!, groups: new Set<CircuitGroup>(), forAll: false }
+      if (c.aircraft && GROUP_LABEL[c.aircraft]) g.groups.add(c.aircraft as CircuitGroup); else g.forAll = true
       groups.set(key, g)
     }
     const pending = info.provenance['circuits']?.review === 'pending'
     const provenance = info.provenance['circuits'] ? { provenance: info.provenance['circuits'] } : {}
     for (const g of groups.values()) {
-      const name = [`RWY ${g.arrow.designator} ${SIDE[g.direction]}`, g.forAll ? null : [...g.groups].join(', ')]
+      const name = [`RWY ${g.arrow.designator} ${SIDE[g.direction]}`, g.forAll ? null : [...g.groups].map(id => GROUP_LABEL[id]).join(', ')]
         .filter(Boolean).join(' · ')
-      const only = !g.forAll && g.groups.size === 1 ? GROUP_OF_LABEL[[...g.groups][0]!] : undefined
+      const only = !g.forAll && g.groups.size === 1 ? [...g.groups][0] : undefined
       const base = { aerodrome: id, kind: 'circuit_leg' as const, name, remarks: null, floor: null, ceiling: null,
         approximate: true, accuracy_m: null, pending, schematic: true, rwys: `|${g.arrow.designator}|`,
         ...(only ? { aircraft: only } : {}), ...provenance }
