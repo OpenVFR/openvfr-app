@@ -59,8 +59,6 @@ export type PreflightWarningItem = {
   }
 }[WarningCode]
 
-const en = formatNumber      // one fixed format for every number in a warning (was: device locale in the airspace lines, en-US elsewhere)
-const here = formatNumber
 
 function classLabel(cls: string, type: string): string {
   return /^[A-F]$/.test(cls)
@@ -108,31 +106,31 @@ const WORDS: { [C in WarningCode]: (p: WarningParamsByCode[C]) => Words } = {
     return {
       title: `Beyond gliding distance from land over ${where}`,
       detail: `Up to ${p.maxFromLandNm} NM from land (at NM ${Math.round(p.atNm)}); about ${p.beyondGlideNm} NM of the route is beyond gliding distance. `
-        + `From ${en(p.altFt)} ft you glide about ${p.glideRangeNm} NM in still air (glide ratio ${p.glideRatio}:1${p.glideAssumed ? ', assumed: set it in the aircraft profile' : ''})`
+        + `From ${formatNumber(p.altFt)} ft you glide about ${p.glideRangeNm} NM in still air (glide ratio ${p.glideRatio}:1${p.glideAssumed ? ', assumed: set it in the aircraft profile' : ''})`
         + (wind ? `; the planned wind (${String(p.windFromDeg).padStart(3, '0')}° at ${p.windKts} kt) is included and moves the area you can reach about ${p.driftNm} NM downwind. ` : '. ')
-        + `Reaching land from there needs ${p.neededFt === null ? 'more than a 60 NM glide' : `about ${en(p.neededFt)} ft`}${wind ? ' with that wind' : ''}. `
-        + `${p.climbToFt !== null ? `Climb to about ${en(p.climbToFt)} ft, route` : 'Route'} closer to the shore, or carry life jackets for everyone on board (required for single-engine aircraft beyond gliding distance from land) and plan for ditching.`,
+        + `Reaching land from there needs ${p.neededFt === null ? 'more than a 60 NM glide' : `about ${formatNumber(p.neededFt)} ft`}${wind ? ' with that wind' : ''}. `
+        + `${p.climbToFt !== null ? `Climb to about ${formatNumber(p.climbToFt)} ft, route` : 'Route'} closer to the shore, or carry life jackets for everyone on board (required for single-engine aircraft beyond gliding distance from land) and plan for ditching.`,
     }
   },
   'airspace-equipment': p => ({
     title: `${classLabel(p.bandClass, p.bandType)} ${p.name} needs ${p.lacks === 'radio' ? 'a radio' : 'a transponder'}`,
-    detail: `Planned altitude ${here(p.plannedFt)} ft enters ${here(p.lowerFt)}–${here(p.upperFt)} ft. The aircraft profile has no ${p.lacks}: route around it, or above or below it.`,
+    detail: `Planned altitude ${formatNumber(p.plannedFt)} ft enters ${formatNumber(p.lowerFt)}–${formatNumber(p.upperFt)} ft. The aircraft profile has no ${p.lacks}: route around it, or above or below it.`,
   }),
   'airspace-penetration': p => ({
     title: `${classLabel(p.bandClass, p.bandType)} penetration — ${p.name}`,
-    detail: `Planned altitude ${here(p.plannedFt)} ft enters ${here(p.lowerFt)}–${here(p.upperFt)} ft`,
+    detail: `Planned altitude ${formatNumber(p.plannedFt)} ft enters ${formatNumber(p.lowerFt)}–${formatNumber(p.upperFt)} ft`,
   }),
   'notam-airspace': p => ({
     title: `${notamTitle(p.notam)} on route`,
-    detail: `About ${Math.round(p.alongNm)} NM along the route, planned ${en(Math.round(p.plannedFt))} ft. ${notamSummary(p.notam)}`,
+    detail: `About ${Math.round(p.alongNm)} NM along the route, planned ${formatNumber(Math.round(p.plannedFt))} ft. ${notamSummary(p.notam)}`,
   }),
   'below-msa': p => ({
     title: `Leg ${p.fromName} → ${p.toName} below Minimum Safe Altitude`,
-    detail: `Planned ${en(Math.round(p.plannedFt))} ft, minimum safe ${en(p.requiredFt)} ft (terrain + ${en(p.terrainClearanceFt)} ft within ${p.abeamNm} NM, obstacles + ${en(p.obstacleClearanceFt)} ft). Check Virtual Radar.`,
+    detail: `Planned ${formatNumber(Math.round(p.plannedFt))} ft, minimum safe ${formatNumber(p.requiredFt)} ft (terrain + ${formatNumber(p.terrainClearanceFt)} ft within ${p.abeamNm} NM, obstacles + ${formatNumber(p.obstacleClearanceFt)} ft). Check Virtual Radar.`,
   }),
   'airfield-proximity': p => ({
     title: `Passes close to ${p.label}`,
-    detail: `${p.lateralNm.toFixed(1)} NM from the track at ${Math.round(p.distNm)} NM, planned ${en(Math.round(p.plannedFt))} ft over a field at ${en(Math.round(p.elevationFt))} ft: expect circuit and arriving or departing traffic.`,
+    detail: `${p.lateralNm.toFixed(1)} NM from the track at ${Math.round(p.distNm)} NM, planned ${formatNumber(Math.round(p.plannedFt))} ft over a field at ${formatNumber(Math.round(p.elevationFt))} ft: expect circuit and arriving or departing traffic.`,
   }),
   'fuel-insufficient': p => ({
     title: `Insufficient fuel${hopLabel(p.hop)}`,
@@ -151,7 +149,7 @@ const WORDS: { [C in WarningCode]: (p: WarningParamsByCode[C]) => Words } = {
     const rwy = `${p.runway.designator ? `runway ${p.runway.designator}` : 'the longest runway'} (${p.runway.lengthM} m ${p.runway.paved ? 'paved' : (p.runway.surface.toLowerCase() || 'unknown surface')})`
     return {
       title: `Runway short for ${what} at ${p.icao} (${p.role})`,
-      detail: `Needs about ${en(p.requiredM)} m: the aircraft's ${what} distance ${p.op === 'takeoff' ? 'over' : 'from'} 50 ft, scaled for elevation${p.tempC != null ? `, ${p.tempC} °C` : ''}, surface and a ${p.safety} safety factor. Best is ${rwy}. Check the POH for today's mass and conditions.`,
+      detail: `Needs about ${formatNumber(p.requiredM)} m: the aircraft's ${what} distance ${p.op === 'takeoff' ? 'over' : 'from'} 50 ft, scaled for elevation${p.tempC != null ? `, ${p.tempC} °C` : ''}, surface and a ${p.safety} safety factor. Best is ${rwy}. Check the POH for today's mass and conditions.`,
     }
   },
 }

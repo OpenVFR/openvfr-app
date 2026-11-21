@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { formatFt, formatNumber } from './formatNumber'
+import { formatNumber } from './formatNumber'
 
 describe('formatNumber', () => {
   it('is the same on every device', () => {
@@ -10,7 +10,6 @@ describe('formatNumber', () => {
     expect(formatNumber(0)).toBe('0')
     expect(formatNumber(123456789)).toBe('123,456,789')
     expect(formatNumber(1234.5)).toBe('1,234.5')
-    expect(formatFt(12500)).toBe('12,500 ft')
   })
 })
 

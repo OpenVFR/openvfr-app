@@ -18,6 +18,7 @@ import type { RouteWaypoint } from '../utils/routeCalc'
 import { distanceNm, bearingDeg } from '../utils/routeCalc'
 import css from './DirectToPanel.module.css'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { FUEL_TAGS } from '@open-vfr/shared/fuelTypes'
 import { IconX } from '@tabler/icons-react'
 import { foldForSearch } from '@open-vfr/shared/searchFold'
 
@@ -204,8 +205,8 @@ export default function DirectToPanel({
               <span className={css.rowTags}>
                 {a.icao === homeIcao && <span className={css.tagHome}>HOME</span>}
                 {a.withinGlide       && <span className={css.tagGlide}>GLIDE</span>}
-                {hasAvgas(a)         && <span className={css.tagFuel}>100LL</span>}
-                {hasJet(a)           && <span className={css.tagFuel}>JET</span>}
+                {hasAvgas(a)         && <span className={css.tagFuel}>{FUEL_TAGS.AVGAS100LL}</span>}
+                {hasJet(a)           && <span className={css.tagFuel}>{FUEL_TAGS.JETA1}</span>}
                 {a.maxRunwayM > 0    && <span className={css.tagRwy}>{a.maxRunwayM}m</span>}
               </span>
 

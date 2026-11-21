@@ -211,6 +211,10 @@ describe('grouped local rules', () => {
     expect(g.map(x => x.title)).toEqual(['AIP', 'Obstacles', 'Noise and neighbours', 'Animals', 'Procedures', 'Other', 'Fuel stop'])
     for (const id of RULE_GROUP_IDS) expect(RULE_GROUP_LABEL[id]).toBeTruthy()
   })
+  it('an unknown heading comes after every known one, "Other" included, whatever the data order', () => {
+    const g = localInfo({ local_rule_groups: [line('Fuel stop', 'Self service'), ...many] }).localRuleGroups!
+    expect(g.map(x => x.title).slice(-2)).toEqual(['Other', 'Fuel stop'])
+  })
   it('a short list stays plain, and so does one without groups', () => {
     expect(localInfo({ local_rules: ['a'], local_rule_groups: many.slice(0, 3) }).localRuleGroups).toBeNull()
     expect(localInfo({ local_rules: ['a'] }).localRuleGroups).toBeNull()

@@ -10,7 +10,7 @@
  * append aerodrome as a route waypoint (onAddToRoute).
  */
 
-import { sellsAnyFuel } from '@open-vfr/shared/fuelTypes'
+import { FUEL_TAGS, sellsAnyFuel } from '@open-vfr/shared/fuelTypes'
 import React from 'react'
 import { View, Text, TouchableOpacity, FlatList } from 'react-native'
 import Slider from '@react-native-community/slider'
@@ -174,10 +174,10 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
           <View style={styles.rowTags}>
             {a.icao === homeIcao && <Text style={styles.tagHome}>HOME</Text>}
             {a.withinGlide && <Text style={styles.tagGlide}>GLIDE</Text>}
-            {hasAvgas(a.fuel) && <Text style={styles.tag}>100LL</Text>}
-            {hasJet(a.fuel) && <Text style={styles.tag}>JET</Text>}
-            {sellsAnyFuel(a.fuel, ['AVGAS_UL91']) && <Text style={styles.tag}>91/96 UL</Text>}
-            {sellsAnyFuel(a.fuel, ['MOGAS']) && <Text style={styles.tag}>MOGAS</Text>}
+            {hasAvgas(a.fuel) && <Text style={styles.tag}>{FUEL_TAGS.AVGAS100LL}</Text>}
+            {hasJet(a.fuel) && <Text style={styles.tag}>{FUEL_TAGS.JETA1}</Text>}
+            {sellsAnyFuel(a.fuel, ['AVGAS_UL91']) && <Text style={styles.tag}>{FUEL_TAGS.AVGAS_UL91}</Text>}
+            {sellsAnyFuel(a.fuel, ['MOGAS']) && <Text style={styles.tag}>{FUEL_TAGS.MOGAS}</Text>}
             {isHard(a.surfaces) && <Text style={styles.tag}>ASPH</Text>}
             {isGrass(a.surfaces) && !isHard(a.surfaces) && <Text style={styles.tagGrass}>GRASS</Text>}
             {a.maxRunwayM > 0 && <Text style={styles.tag}>{a.maxRunwayM}m</Text>}

@@ -11,8 +11,3 @@
 export function formatNumber(n: number): string {
   return n.toLocaleString('en-US')
 }
-
-/** `1300` -> "1,300 ft". */
-export function formatFt(n: number): string {
-  return `${formatNumber(n)} ft`
-}

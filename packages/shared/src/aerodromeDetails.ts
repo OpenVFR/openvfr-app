@@ -233,7 +233,7 @@ const RULE_GROUP_OF_TITLE: Record<string, RuleGroupId> = Object.fromEntries(
   RULE_GROUP_IDS.map(id => [RULE_GROUP_LABEL[id], id]),
 ) as Record<string, RuleGroupId>
 
-/** Local rules under a heading (from the tidy version, openvfr-infra compact_rules.py): `key` lines are shown up front, the
+/** Local rules under a heading (the curated `local_rule_groups`: rows of `title`, `text`, `key`): `key` lines are shown up front, the
  *  others fold away under the heading. */
 export interface RuleGroup {
   /** A `RuleGroupId`, or the heading's own text for a heading this version does not know. */
@@ -286,7 +286,7 @@ function ruleGroups(v: unknown): RuleGroup[] | null {
     count++
   }
   if (count < RULES_GROUPED_MIN) return null
-  const rank = (id: string) => { const i = (RULE_GROUP_IDS as readonly string[]).indexOf(id); return i < 0 ? RULE_GROUP_IDS.length - 1 : i }
+  const rank = (id: string) => { const i = (RULE_GROUP_IDS as readonly string[]).indexOf(id); return i < 0 ? RULE_GROUP_IDS.length : i }      // an unknown heading after every known one
   return [...by.values()].sort((a, b) => rank(a.id) - rank(b.id))
 }
 

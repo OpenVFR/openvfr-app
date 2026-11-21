@@ -21,6 +21,14 @@ export const FUEL_LABELS: Record<FuelCode, string> = {
   JETA1:      'JET A-1',
 }
 
+/** The short label of a grade for a tag in a list row (the full names above are for text). */
+export const FUEL_TAGS: Record<FuelCode, string> = {
+  AVGAS100LL: '100LL',
+  AVGAS_UL91: '91/96 UL',
+  MOGAS:      'MOGAS',
+  JETA1:      'JET',
+}
+
 /** Whether one aerodrome fuel code supplies the given grade. */
 function supplies(code: string, grade: FuelCode): boolean {
   const c = code.trim().toUpperCase()

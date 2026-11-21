@@ -241,7 +241,7 @@ export function MapDisplaySheet({
               <Text style={styles.basemapNote}>Satellite imagery is planning-only and switches off in flight.</Text>
             )}
 
-            {/* ── Airspace Ceiling ───────────────────────── */}
+            {/* ── Altitude filter ───────────────────────── */}
             <SectionHeader title="Altitude filter" />
             <View style={styles.sliderWrap}>
               <AltitudeSlider ceilingFt={ceilingFt} onChange={onCeilingChange} />
