@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { FeatureCollection, Point } from 'geojson'
-import { displaceReportingPoints, displaceWaypoints, landmarkRadius, placeMarks, reportingRadius, restore, sameDisplacement, toLonLat, toScreen, waypointBlockers, type View } from './symbolDeclutter'
+import { displaceReportingPoints, displaceWaypoints, landmarkRadius, placeMarks, reportingRadius, restore, sameDisplacement, NATIVE_RADII, WEB_RADII, toLonLat, toScreen, truePosition, waypointBlockers, type View } from './symbolDeclutter'
 
 const view = (over: Partial<View> = {}): View => ({ lon: 13.02, lat: 55.425, zoom: 16, bearing: 0, width: 800, height: 600, ...over })
 
@@ -107,5 +107,40 @@ describe('mandatory reporting points stay put, VFR reporting points make room', 
       properties: { kind: 'reporting_point', aerodrome: 'ESXX', name: 'Club point' } }] } as FeatureCollection
     const out = displaceReportingPoints(club, waypointBlockers(base, v.zoom), v)
     expect((out.features[0].properties as Record<string, unknown>)['displaced']).toBe(true)
+  })
+})
+
+describe('input that is not a collection, hidden points and the true position', () => {
+  const pt = (props: Record<string, unknown>, lon = 13.02, lat = 55.425) => ({ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [lon, lat] }, properties: props })
+  it('a file address or missing data is returned as it is, not thrown on (a downloaded country is a URL the map reads itself)', () => {
+    const url = 'file:///tiles/se-waypoints.geojson' as unknown as FeatureCollection
+    expect(displaceWaypoints(url, [], view())).toBe(url)
+    expect(restore(url)).toBe(url)
+    expect(displaceReportingPoints(undefined as unknown as FeatureCollection, [], view())).toBeUndefined()
+    expect(waypointBlockers(url, 14)).toEqual([])
+  })
+  it('only the points the layer draws take part: a hidden neighbour does not push a visible point aside', () => {
+    const fc: FeatureCollection = { type: 'FeatureCollection', features: [pt({ kind: 'reporting_point', aerodrome: 'AAAA', name: 'A1' }), pt({ kind: 'reporting_point', aerodrome: 'BBBB', name: 'B1' })] }
+    const all = displaceReportingPoints(fc, [], view())
+    expect(all.features.filter(f => (f.properties as Record<string, unknown>)['displaced']).length).toBe(1)          // the two collide: one moves
+    const drawn = displaceReportingPoints(fc, [], view(), f => (f.properties as Record<string, unknown>)['aerodrome'] === 'BBBB')
+    expect(drawn.features.some(f => (f.properties as Record<string, unknown>)['displaced'])).toBe(false)                 // AAAA is not drawn: BBBB stays
+  })
+  it('truePosition is lon0/lat0 for a displaced point and the coordinates otherwise', () => {
+    expect(truePosition(pt({ lon0: 13.1, lat0: 55.5, displaced: true }))).toEqual([13.1, 55.5])
+    expect(truePosition(pt({}))).toEqual([13.02, 55.425])
+  })
+  it('two points of different aerodromes with the same name are not the same displacement', () => {
+    const mk = (ad: string) => ({ type: 'FeatureCollection', features: [pt({ aerodrome: ad, name: 'X', displaced: true, lon0: 1, lat0: 2 })] }) as FeatureCollection
+    expect(sameDisplacement(mk('AAAA'), mk('AAAA'))).toBe(true)
+    expect(sameDisplacement(mk('AAAA'), mk('BBBB'))).toBe(false)
+  })
+})
+
+describe('radii per platform', () => {
+  it('native draws smaller landmark and reporting-point symbols than web, at every zoom the declutter runs', () => {
+    for (const z of [10, 12, 14, 16]) expect(NATIVE_RADII.landmark(z)).toBeLessThan(WEB_RADII.landmark(z))
+    for (const z of [9, 11, 13]) expect(NATIVE_RADII.reporting(z)).toBeLessThanOrEqual(WEB_RADII.reporting(z) + 3)
+    expect(WEB_RADII.landmark(12)).toBe(landmarkRadius(12))
   })
 })

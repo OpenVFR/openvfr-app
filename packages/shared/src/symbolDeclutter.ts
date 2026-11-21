@@ -5,7 +5,7 @@
  * every zoom). Its true position stays in the feature (`lon0`, `lat0`); the label follows the shifted symbol because both are drawn from the
  * same (shifted) geometry. Pure functions, shared by web and native: the caller supplies the camera and the symbols it draws.
  */
-import type { Feature, FeatureCollection, Point } from 'geojson'
+import type { Feature, FeatureCollection, GeoJsonProperties, Geometry, Point } from 'geojson'
 
 /** The camera: centre, zoom (512 px tiles), bearing in degrees, viewport in CSS pixels. Pitched views are not handled (no shifting). */
 export interface View { lon: number; lat: number; zoom: number; bearing: number; width: number; height: number; pitch?: number }
@@ -53,10 +53,20 @@ const lerp = (z: number, stops: [number, number][]): number => {
   return stops[stops.length - 1][1]
 }
 
-/** Radii (px) of the symbols as the styles draw them (landmark icon 24 px at icon-size 0.35..1.0, obstacle circle 2.5..7 px, the point's triangle 24 px at 0.45..0.7). */
+/** Radii (px) of the symbols as the web style draws them (landmark icon 24 px at icon-size 0.35..1.0, obstacle circle 2.5..7 px, the point's triangle 24 px at 0.45..0.7). */
 export const landmarkRadius = (zoom: number): number => 12 * lerp(zoom, [[10, 0.35], [12, 0.55], [14, 0.8], [16, 1]]) + 1
 export const obstacleRadius = (zoom: number): number => lerp(zoom, [[11, 2.5], [16, 7]]) + 1.5
 export const reportingRadius = (zoom: number): number => 12 * lerp(zoom, [[9, 0.45], [12, 0.7]]) + 1
+
+/** How big the symbols are drawn, as radii in pixels per zoom: each platform passes the radii of its own style. */
+export interface Radii { landmark: (zoom: number) => number; obstacle: (zoom: number) => number; reporting: (zoom: number) => number }
+export const WEB_RADII: Radii = { landmark: landmarkRadius, obstacle: obstacleRadius, reporting: reportingRadius }
+/** The native style draws its landmark icons (24 px at icon-size 0.3..0.5) and base reporting-point icons (0.22..0.5) smaller. */
+export const NATIVE_RADII: Radii = {
+  landmark: zoom => 12 * lerp(zoom, [[10, 0.3], [14, 0.5]]) + 1,
+  obstacle: obstacleRadius,
+  reporting: zoom => 12 * lerp(zoom, [[8, 0.22], [10, 0.35], [13, 0.5]]) + 1,
+}
 
 const ANGLES = [0, 180, -90, 90, -45, 45, -135, 135]          // right, left, up, down, then the corners (degrees, screen)
 const STEPS = [1, 1.5, 2.1, 2.8]                                 // times the gap needed to clear one symbol
@@ -100,6 +110,9 @@ const isClubPoint = (f: Feature): boolean => isPoint(f) && props(f)['kind'] === 
  *  and everything else moves away from them. */
 const isBaseVfrPoint = (f: Feature): boolean => isPoint(f) && props(f)['wp_type'] === 'RP' && !String(props(f)['name'] ?? '').toUpperCase().startsWith('HOLDING')
 
+/** A point of the base waypoint layer (it has a `wp_type`). */
+const isBaseWaypoint = (f: Feature): boolean => props(f)['wp_type'] !== undefined
+
 const pointKey = (f: PointFeature): string => `${String(props(f)['aerodrome'] ?? '')}|${String(props(f)['name'] ?? '')}|${props(f)['lon0'] ?? f.geometry.coordinates[0]}|${props(f)['lat0'] ?? f.geometry.coordinates[1]}`
 
 /**
@@ -107,17 +120,19 @@ const pointKey = (f: PointFeature): string => `${String(props(f)['aerodrome'] ??
  * `lon0`/`lat0` first, so calling it again on its own result for another view is safe. A pitched view (the projection is not flat) and a point outside the screen are left where
  * they are.
  */
-function displaceWhere(fc: FeatureCollection, movable: (f: Feature) => boolean, blockers: Blocker[], v: View, fixedRadius: number): FeatureCollection {
+function displaceWhere(fc: FeatureCollection, movable: (f: Feature) => boolean, blockers: Blocker[], v: View, radii: Radii): FeatureCollection {
+  if (!Array.isArray(fc?.features)) return fc            // not a collection (a file URL a map source reads itself, or no data): nothing to place
   const original = restore(fc)
   if ((v.pitch ?? 0) > 1) return original
   const margin = 120
   const onScreen = (x: number, y: number) => x > -margin && y > -margin && x < v.width + margin && y < v.height + margin
+  const rp = radii.reporting(v.zoom)
   const fixed: Blocker[] = [...blockers]
   for (const f of original.features) {
-    if (isPoint(f) && !movable(f) && props(f)['wp_type'] !== undefined) fixed.push({ lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], r: fixedRadius })
+    // a base-layer waypoint that may not move (a mandatory reporting point, a holding point) is a fixed symbol; the club points and other layers' features are not waypoints
+    if (isPoint(f) && !movable(f) && isBaseWaypoint(f)) fixed.push({ lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], r: rp })
   }
   const bs = fixed.map(b => { const [x, y] = toScreen(b.lon, b.lat, v); return { x, y, r: b.r } }).filter(b => onScreen(b.x, b.y))
-  const rp = reportingRadius(v.zoom)
   const marks = original.features.filter((f): f is PointFeature => isPoint(f) && movable(f))
     .map(f => { const [x, y] = toScreen(f.geometry.coordinates[0], f.geometry.coordinates[1], v); return { id: pointKey(f), x, y, r: rp } })
     .filter(m => onScreen(m.x, m.y))
@@ -139,30 +154,38 @@ function displaceWhere(fc: FeatureCollection, movable: (f: Feature) => boolean, 
 }
 
 /** Club reporting points (aerodrome details) moved clear of `blockers` (landmarks, obstacles, the base layer's waypoints: see `waypointBlockers`). */
-export function displaceReportingPoints(fc: FeatureCollection, blockers: Blocker[], v: View): FeatureCollection {
-  return displaceWhere(fc, isClubPoint, blockers, v, reportingRadius(v.zoom))
+export function displaceReportingPoints(fc: FeatureCollection, blockers: Blocker[], v: View, drawn?: (f: Feature) => boolean, radii: Radii = WEB_RADII): FeatureCollection {
+  // `drawn`: only the points the layer shows take part (the hidden points of a neighbouring aerodrome must not push the visible ones aside)
+  return displaceWhere(fc, f => isClubPoint(f) && (drawn ? drawn(f) : true), blockers, v, radii)
 }
 
 /** The base waypoint layer: VFR reporting points (RP) moved clear of `blockers`; mandatory reporting points (MRP) and holding points stay exactly where they are and are
  *  blockers themselves. */
-export function displaceWaypoints(fc: FeatureCollection, blockers: Blocker[], v: View): FeatureCollection {
-  return displaceWhere(fc, isBaseVfrPoint, blockers, v, reportingRadius(v.zoom))
+export function displaceWaypoints(fc: FeatureCollection, blockers: Blocker[], v: View, radii: Radii = WEB_RADII): FeatureCollection {
+  return displaceWhere(fc, isBaseVfrPoint, blockers, v, radii)
 }
 
 /** Every waypoint of the base layer as a fixed symbol, for the club points to keep clear of (a club point is never put on a mandatory reporting point). */
-export function waypointBlockers(fc: FeatureCollection | null | undefined, zoom: number): Blocker[] {
-  const r = reportingRadius(zoom)
-  return (fc?.features ?? []).filter(isPoint).map(f => ({ lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], r }))
+export function waypointBlockers(fc: FeatureCollection | null | undefined, zoom: number, radii: Radii = WEB_RADII): Blocker[] {
+  const r = radii.reporting(zoom)
+  return (Array.isArray(fc?.features) ? fc!.features : []).filter(isPoint).map(f => ({ lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], r }))
+}
+
+/** Where a point really is: a displaced point keeps its true position in `lon0`/`lat0`. A route, a popup, a snap and "what is here" always use this one. */
+export function truePosition(feature: { geometry: Geometry; properties?: GeoJsonProperties }): [number, number] {
+  const [lng, lat] = (feature.geometry as Point).coordinates as [number, number]
+  const p = (feature.properties ?? {}) as Record<string, unknown>
+  return typeof p['lon0'] === 'number' && typeof p['lat0'] === 'number' ? [p['lon0'], p['lat0']] : [lng, lat]
 }
 
 /** Features with every displaced point back at its true position. */
 export function restore(fc: FeatureCollection): FeatureCollection {
-  if (!fc.features.some(f => (f.properties as Record<string, unknown> | null)?.['displaced'])) return fc
+  if (!Array.isArray(fc?.features) || !fc.features.some(f => props(f)['displaced'])) return fc
   return {
     ...fc,
     features: fc.features.map(f => {
-      const p = f.properties as Record<string, unknown> | null
-      if (!p?.['displaced'] || f.geometry?.type !== 'Point') return f
+      const p = props(f)
+      if (!p['displaced'] || f.geometry?.type !== 'Point') return f
       const { lon0, lat0, displaced: _d, ...rest } = p
       void _d
       return { ...f, geometry: { type: 'Point', coordinates: [lon0 as number, lat0 as number] }, properties: rest }
@@ -172,7 +195,7 @@ export function restore(fc: FeatureCollection): FeatureCollection {
 
 /** True when two results move the same points to the same places (to avoid setting the same data again). */
 export function sameDisplacement(a: FeatureCollection, b: FeatureCollection): boolean {
-  const key = (fc: FeatureCollection) => fc.features.filter(f => (f.properties as Record<string, unknown> | null)?.['displaced'])
-    .map(f => `${(f as PointFeature).properties?.['name']}@${((f.geometry as Point).coordinates).map(n => n.toFixed(6)).join(',')}`).sort().join(';')
+  const key = (fc: FeatureCollection) => fc.features.filter(f => props(f)['displaced'] && isPoint(f))
+    .map(f => `${pointKey(f as PointFeature)}@${((f.geometry as Point).coordinates).map(n => n.toFixed(6)).join(',')}`).sort().join(';')
   return key(a) === key(b)
 }

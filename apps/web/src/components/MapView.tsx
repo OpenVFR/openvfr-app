@@ -167,6 +167,7 @@ import css from './MapView.module.css'
 import MapInfoBar from './MapInfoBar'
 import MapCompass from './MapCompass'
 import { formatNumber } from '@open-vfr/shared/formatNumber'
+import { truePosition } from '@open-vfr/shared/symbolDeclutter'
 
 // MapLibre layer IDs we listen to for aerodrome clicks.
 // All layers that reference the ofm-aerodromes source.
@@ -387,14 +388,6 @@ const noop = () => {}
 const NO_ALERTS: never[] = []
 
 /** Route point for a clicked navaid / reporting point (popup's route action). */
-/** Where a point really is: a reporting point the map moved beside another symbol (symbolDeclutter) keeps its true position in lon0/lat0. A route, a popup
- *  and "what is here" always use the true one. */
-function truePosition(feat: maplibregl.MapGeoJSONFeature): [number, number] {
-  const [lng, lat] = (feat.geometry as { type: 'Point'; coordinates: [number, number] }).coordinates
-  const p = (feat.properties ?? {}) as Record<string, unknown>
-  return typeof p['lon0'] === 'number' && typeof p['lat0'] === 'number' ? [p['lon0'], p['lat0']] : [lng, lat]
-}
-
 function pointRouteWp(feat: maplibregl.MapGeoJSONFeature, name: string): RouteWaypoint {
   const [lng, lat] = truePosition(feat)
   return { lng, lat, name }
@@ -2368,13 +2361,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
         const seen = new Set<string>()
         const out: SnapCandidate[] = []
         for (const feat of hits) {
-          const geom = feat.geometry as { type: 'Point'; coordinates: [number, number] }
+          const [gLng, gLat] = truePosition(feat)       // a reporting point the map moved beside another symbol is routed at its true place
           const name = extractSnapName(feat)
-          const key  = `${name}|${geom.coordinates[0].toFixed(4)}|${geom.coordinates[1].toFixed(4)}`
+          const key  = `${name}|${gLng.toFixed(4)}|${gLat.toFixed(4)}`
           if (seen.has(key)) continue
           seen.add(key)
           const snapKind = extractSnapKind(feat)
-          out.push({ kind: snapKind, icon: snapIconName(snapKind, (feat.properties as Record<string, unknown>)?.kind), displayName: extractSnapDisplayName(feat), waypoint: { lng: geom.coordinates[0], lat: geom.coordinates[1], name } })
+          out.push({ kind: snapKind, icon: snapIconName(snapKind, (feat.properties as Record<string, unknown>)?.kind), displayName: extractSnapDisplayName(feat), waypoint: { lng: gLng, lat: gLat, name } })
         }
         return out
       }
@@ -3370,11 +3363,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
         const seen = new Set<string>()
         const real: SnapCandidate[] = []
         for (const feat of hits) {
-          const geom = feat.geometry as { type: 'Point'; coordinates: [number, number] }
+          const [gLng, gLat] = truePosition(feat)
           const name = extractSnapName(feat)
           const kind = extractSnapKind(feat)
-          const key = `${kind}:${name}:${geom.coordinates[1].toFixed(5)}:${geom.coordinates[0].toFixed(5)}`
-          const wp = { lng: geom.coordinates[0], lat: geom.coordinates[1], name }
+          const key = `${kind}:${name}:${gLat.toFixed(5)}:${gLng.toFixed(5)}`
+          const wp = { lng: gLng, lat: gLat, name }
           // The route's own end is not a new point.
           if (!seen.has(key) && !(last && samePoint(last, wp))) {
             seen.add(key)

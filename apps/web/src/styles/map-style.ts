@@ -11,7 +11,7 @@ import {
   RUNWAY_LABEL_DEFAULT_HALO,
 } from '@open-vfr/shared/runwayWind'
 import { TILES_BASE_URL } from '../utils/env'
-import { CIRCUIT_LAYER_IDS, HOLDING_ORBIT_LAYER, REPORTING_POINT_LAYER_IDS } from '@open-vfr/shared/aerodromeDetailsStyle'
+import { CIRCUIT_LAYER_IDS, HOLDING_ORBIT_LAYER, REPORTING_POINT_LAYER_IDS, LABEL_ANCHORS } from '@open-vfr/shared/aerodromeDetailsStyle'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
 import { DEFAULT_REGION_CODE } from '@open-vfr/shared/regions'
 import { countryDatasetFile, countryArchiveFile, type CountryDataset } from '@open-vfr/shared/countryData'
@@ -1469,7 +1469,7 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
             16, 11,
           ],
           // looks for room round the symbol (below, above, beside) instead of giving up when the first spot is taken
-          'text-variable-anchor': ['top', 'bottom', 'right', 'left', 'top-right', 'bottom-right', 'top-left', 'bottom-left'],
+          'text-variable-anchor': LABEL_ANCHORS,
           'text-radial-offset': 0.7,
           'text-justify': 'auto',
           'text-allow-overlap': false,

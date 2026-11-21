@@ -78,11 +78,11 @@ import { ChartOverlayLayer } from './ChartOverlay'
 import { overlayGeometry } from '@open-vfr/shared/chartsIndex'
 import { cornersBounds } from '@open-vfr/shared/chartDocument'
 import { getChartUiState, useChartFitToken } from '../utils/charts'
-import { buildDetailsMapData, staticColorLayers, layerFilter, landmarkLabelFilter, landmarkNamesTakenByPoints } from '@open-vfr/shared/aerodromeDetailsStyle'
+import { buildDetailsMapData, staticColorLayers, layerFilter, isDrawnClubPoint, LABEL_ANCHORS, landmarkLabelFilter, landmarkNamesTakenByPoints } from '@open-vfr/shared/aerodromeDetailsStyle'
 import { useCircuitFocus } from '../utils/circuitFocus'
 import { useRelevantAerodromes } from '../utils/relevantAerodrome'
 import { setCameraView, useCameraView } from '../utils/cameraView'
-import { displaceReportingPoints, displaceWaypoints, landmarkRadius, obstacleRadius, sameDisplacement, waypointBlockers, type Blocker } from '@open-vfr/shared/symbolDeclutter'
+import { displaceReportingPoints, displaceWaypoints, NATIVE_RADII, sameDisplacement, waypointBlockers, type Blocker } from '@open-vfr/shared/symbolDeclutter'
 import { setDisplacedWaypoints, useDisplacedWaypoints } from '../utils/displacedWaypoints'
 import { LogManager } from '@maplibre/maplibre-react-native'
 import { createValueStore, useStoreValue, type ValueStore } from '../utils/valueStore'
@@ -1161,23 +1161,30 @@ function symbolBlockers(landmarks: GeoJSON.FeatureCollection | null | undefined,
       if (near(lon, lat)) out.push({ lon, lat, r })
     }
   }
-  if (cam.zoom >= 10 && showLandmarks) add(landmarks, landmarkRadius(cam.zoom))
-  if (cam.zoom >= 11 && showObstacles) add(obstacles, obstacleRadius(cam.zoom))
+  if (cam.zoom >= 10 && showLandmarks) add(landmarks, NATIVE_RADII.landmark(cam.zoom))
+  if (cam.zoom >= 11 && showObstacles) add(obstacles, NATIVE_RADII.obstacle(cam.zoom))
   return out
 }
 
-/** Computes where the base layer's VFR reporting points are drawn (moved beside landmark / obstacle symbols; mandatory ones never) and publishes it. Renders nothing. */
+/** A parsed collection, not a file URL (a downloaded country's data is a `file://` address the map source reads itself) and not missing. */
+const isCollection = (x: unknown): x is GeoJSON.FeatureCollection => !!x && typeof x === 'object' && Array.isArray((x as GeoJSON.FeatureCollection).features)
+const hasDisplaced = (fc: GeoJSON.FeatureCollection): boolean => fc.features.some(f => (f.properties as Record<string, unknown> | null)?.['displaced'])
+
+/** Computes where the base layer's VFR reporting points are drawn (moved beside landmark / obstacle symbols; mandatory ones never) and publishes it. Renders nothing.
+ *  It needs the waypoints as data: while they are only a file address (a downloaded country) the map draws them unmoved. */
 const WaypointDeclutter = React.memo(function WaypointDeclutter({ waypoints, landmarks, obstacles, showLandmarks, showObstacles }:
   { waypoints?: GeoJSON.FeatureCollection | null; landmarks?: GeoJSON.FeatureCollection | null; obstacles?: GeoJSON.FeatureCollection | null; showLandmarks: boolean; showObstacles: boolean }) {
   const cam = useCameraView()
   const { width, height } = useWindowDimensions()
   const last = React.useRef<GeoJSON.FeatureCollection | null>(null)
+  // The store is shared and outlives this component (a new country mounts a new one): never leave another country's points in it.
+  React.useEffect(() => () => { last.current = null; setDisplacedWaypoints(null) }, [waypoints])
   React.useEffect(() => {
-    if (!waypoints || !cam) { if (last.current) { last.current = null; setDisplacedWaypoints(null) } return }
-    const d = displaceWaypoints(waypoints as never, symbolBlockers(landmarks, obstacles, showLandmarks, showObstacles, cam), { ...cam, width, height }) as unknown as GeoJSON.FeatureCollection
-    const moved = d.features.some(f => (f.properties as Record<string, unknown> | null)?.['displaced'])
-    if (!moved) { if (last.current) { last.current = null; setDisplacedWaypoints(null) } return }
-    if (last.current && sameDisplacement(last.current as never, d as never)) return
+    const clear = () => { last.current = null; setDisplacedWaypoints(null) }
+    if (!isCollection(waypoints) || !cam) return clear()
+    const d = displaceWaypoints(waypoints, symbolBlockers(landmarks, obstacles, showLandmarks, showObstacles, cam), { ...cam, width, height }, NATIVE_RADII)
+    if (!hasDisplaced(d)) return clear()
+    if (last.current && sameDisplacement(last.current, d)) return
     last.current = d
     setDisplacedWaypoints(d)
   }, [waypoints, cam, width, height, landmarks, obstacles, showLandmarks, showObstacles])
@@ -1197,9 +1204,9 @@ const AerodromeDetailsLayers = React.memo(function AerodromeDetailsLayers({ data
   const shown = React.useMemo(() => {
     if (!cam || !showWaypoints) return data
     // club points keep clear of landmarks, obstacles and every base waypoint (a mandatory reporting point is never moved: they move away from it)
-    return displaceReportingPoints(data as never, [...symbolBlockers(landmarks, obstacles, showLandmarks, showObstacles, cam), ...waypointBlockers(waypoints as never, cam.zoom)],
-      { ...cam, width, height }) as unknown as GeoJSON.FeatureCollection
-  }, [data, cam, width, height, landmarks, obstacles, showLandmarks, showObstacles, showWaypoints, waypoints])
+    return displaceReportingPoints(data, [...symbolBlockers(landmarks, obstacles, showLandmarks, showObstacles, cam), ...waypointBlockers(isCollection(waypoints) ? waypoints : null, cam.zoom, NATIVE_RADII)],
+      { ...cam, width, height }, f => isDrawnClubPoint(f, relevant), NATIVE_RADII)
+  }, [data, cam, width, height, landmarks, obstacles, showLandmarks, showObstacles, showWaypoints, waypoints, relevant])
   return (
     <GeoJSONSource id="aerodrome-details" onPress={() => {}} data={shown}>
       {DETAIL_LAYERS_STATIC.map(l => {
@@ -1694,7 +1701,7 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
                 'text-field': ['get', 'name'],
                 'text-font': ['Noto Sans Regular'],
                 'text-size': ['interpolate', ['linear'], ['zoom'], 13, 9, 16, 11],
-                'text-variable-anchor': ['top', 'bottom', 'right', 'left', 'top-right', 'bottom-right', 'top-left', 'bottom-left'],
+                'text-variable-anchor': LABEL_ANCHORS,
                 'text-radial-offset': 0.7,
                 'text-justify': 'auto',
                 'text-optional': true,

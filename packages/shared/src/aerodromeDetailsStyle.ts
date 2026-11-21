@@ -62,10 +62,10 @@ const POLY: Expr = ['==', ['geometry-type'], 'Polygon']
 const POINT: Expr = ['==', ['geometry-type'], 'Point']
 const DRAWN: Expr = ['!=', ['get', 'schematic'], true]
 
-/** Layers in drawing order (bottom first). */
 /** The sides a label tries, in order, round its symbol. */
-export const LABEL_ANCHORS = ['top', 'bottom', 'right', 'left', 'top-right', 'bottom-right', 'top-left', 'bottom-left']
+export const LABEL_ANCHORS: ('top' | 'bottom' | 'right' | 'left' | 'top-right' | 'bottom-right' | 'top-left' | 'bottom-left')[] = ['top', 'bottom', 'right', 'left', 'top-right', 'bottom-right', 'top-left', 'bottom-left']
 
+/** Layers in drawing order (bottom first). */
 export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
   // Areas, taxiways, parking, extra reporting points
   { id: 'ad-details-fill', type: 'fill', group: 'details', minzoom: DETAILS_MIN_ZOOM, filter: ['all', POLY, IS_AREA],
@@ -192,6 +192,13 @@ export function layerFilter(l: DetailLayerSpec, focus: CircuitFocus | null, rele
     ['in', `|${focus.runway}|`, ['get', 'rwys']]]]
 }
 
+/** Is this reporting point drawn, given the aerodromes in `relevant` (`undefined` = the rule is off: all are drawn). */
+export function isDrawnClubPoint(f: Feature, relevant?: readonly string[]): boolean {
+  if (!relevant) return true
+  const a = ((f.properties ?? {}) as Record<string, unknown>)['aerodrome']
+  return typeof a === 'string' && relevant.includes(a)
+}
+
 /** Names of landmarks (churches, masts) that a drawn reporting point of the same name sits on, for the points that are drawn now (an aerodrome in
  *  `relevant`, the reporting-point layer switched on): the point's label names the place, so the landmark's own label is left off. */
 export function landmarkNamesTakenByPoints(fc: { features: Feature[] } | null | undefined, relevant: readonly string[], visible: boolean): string[] {
@@ -229,21 +236,20 @@ export function buildDetailsMapData(
   const all = [...details, ...schematicCircuitFeatures(aerodromes, drawn), ...holdingOrbitFeatures(details)]
   return {
     type: 'FeatureCollection',
-    features: all.map(f => ({
-      ...f,
-      properties: {
+    features: all.map(f => {
+      const named = f.properties.kind !== 'circuit_leg' && f.properties.kind !== 'arrival_route' && f.properties.kind !== 'holding'
+        && (f.geometry.type === 'Point' || AREA_KINDS.has(f.properties.kind as DetailKind))
+      const area = named ? mapAreaLabel(f.properties, false) : ''
+      return { ...f, properties: {
         ...f.properties,
-        label: f.properties.kind !== 'circuit_leg' && f.properties.kind !== 'arrival_route' && f.properties.kind !== 'holding'
-          && (f.geometry.type === 'Point' || AREA_KINDS.has(f.properties.kind as DetailKind) )
-          ? (mapAreaLabel(f.properties, false) ? [mapAreaLabel(f.properties, false), f.properties.pending ? '(unreviewed)' : null].filter(Boolean).join('\n') : '')
-          : '',
+        label: area ? [area, f.properties.pending ? '(unreviewed)' : null].filter(Boolean).join('\n') : '',
         clabel: f.properties.kind === 'circuit_leg' || f.properties.kind === 'arrival_route' ? circuitLabel(f.properties.name) : '',
         // flat copies for the tap popup (a rendered feature returns nested values as JSON text)
         limits: formatLimits(f.properties.floor, f.properties.ceiling) ?? '',
         below: belowText(f.properties.floor, f.properties.ceiling) ?? '',
         source: f.properties.provenance?.source_name ?? '',
-      },
-    })),
+      } }
+    }),
   }
 }
 

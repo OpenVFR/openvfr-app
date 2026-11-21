@@ -59,14 +59,6 @@ import { useDataFreshness } from '../hooks/useDataFreshness'
 
 import { FOLLOW_RETURN_MS } from '@open-vfr/shared/followZoom'
 // Vertical space the top-left route-edit banner takes; other top banners step below it.
-/** Where a point really is: a reporting point the map drew beside another symbol (symbolDeclutter) keeps its true position in lon0/lat0; a route, a popup and the
- *  position shown always use the true one. */
-function truePosition(feature: { geometry: GeoJSON.Geometry; properties?: GeoJSON.GeoJsonProperties }): [number, number] {
-  const [lng, lat] = (feature.geometry as Point).coordinates as [number, number]
-  const p = (feature.properties ?? {}) as Record<string, unknown>
-  return typeof p['lon0'] === 'number' && typeof p['lat0'] === 'number' ? [p['lon0'], p['lat0']] : [lng, lat]
-}
-
 const EDIT_BANNER_H = 44
 /** Height of the route hint pill (two lines) plus a gap. */
 const ROUTE_HINT_H = 64
@@ -187,6 +179,7 @@ import { BaroPromptModal } from '../components/BaroPromptModal'
 import { aerodromeId } from '@open-vfr/shared/aerodromeId'
 import { CIRCUIT_FOCUS_COLOR } from '@open-vfr/shared/featureColors'
 import { formatNumber } from '@open-vfr/shared/formatNumber'
+import { truePosition } from '@open-vfr/shared/symbolDeclutter'
 /** How often the flown trail is rebuilt from the active log (ms). */
 const TRAIL_REFRESH_MS = 5_000
 
