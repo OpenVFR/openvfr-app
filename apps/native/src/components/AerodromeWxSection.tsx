@@ -36,6 +36,7 @@ import { WindCompassGauge, WindSpeedGauge } from './WindGauges'
 import Svg, { Path } from 'react-native-svg'
 import CloudProfile from './CloudProfile'
 import TafTimeline from './TafTimeline'
+import { formatNumber } from '@open-vfr/shared/formatNumber'
 
 const TAF_PERIOD_LABEL: Record<string, string> = {
   BASE: 'FCST', FM: 'FROM', BECMG: 'BECMG', TEMPO: 'TEMPO', PROB30: 'PROB30', PROB40: 'PROB40',
@@ -241,7 +242,7 @@ export default function AerodromeWxSection({ icao, lat, lng, elevationFt, runway
                 <View style={wxStyles.tileGrid}>
                   <WxTile wide label="Wind" value={fmtWind(effectiveWind)} tone={windTone(effectiveWind)} arrowDeg={windArrowDeg} />
                   <WxTile label="Visibility" value={fmtVis(metar.visM)} tone={visTone(metar.visM)} />
-                  <WxTile label="Ceiling" value={metar.ceilingFt != null ? `${metar.ceilingFt.toLocaleString()} ft` : metar.clouds === 'CAVOK' ? 'CAVOK' : 'No ceiling'} tone={ceilingTone(metar.ceilingFt)} />
+                  <WxTile label="Ceiling" value={metar.ceilingFt != null ? `${formatNumber(metar.ceilingFt)} ft` : metar.clouds === 'CAVOK' ? 'CAVOK' : 'No ceiling'} tone={ceilingTone(metar.ceilingFt)} />
                   <WxTile label="QNH" value={metar.qnh ? metar.qnh.slice(1) : '—'} tone="info" />
                   {metar.temp && <WxTile label="T / Td" value={`${metar.temp.replace('/', ' / ')}°C`} tone="info" />}
                   {metar.wx && <WxTile label="Wx" value={metar.wx} tone="warn" />}
@@ -360,11 +361,11 @@ export default function AerodromeWxSection({ icao, lat, lng, elevationFt, runway
         </View>
         {densityAltFt != null ? (
           <Text style={[daStyles.result, { color: daColor(densityAltFt) }]}>
-            {densityAltFt.toLocaleString()} ft density alt
-            {pressAltFt != null ? `  ·  PA ${Math.round(pressAltFt).toLocaleString()} ft` : ''}
+            {formatNumber(densityAltFt)} ft density alt
+            {pressAltFt != null ? `  ·  PA ${formatNumber(Math.round(pressAltFt))} ft` : ''}
           </Text>
         ) : pressAltFt != null ? (
-          <Text style={daStyles.hint}>PA {Math.round(pressAltFt).toLocaleString()} ft — enter OAT for density alt</Text>
+          <Text style={daStyles.hint}>PA {formatNumber(Math.round(pressAltFt))} ft — enter OAT for density alt</Text>
         ) : (
           <Text style={daStyles.hint}>Enter QNH and OAT</Text>
         )}

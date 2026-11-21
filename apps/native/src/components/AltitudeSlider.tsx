@@ -8,6 +8,7 @@ import React from 'react'
 import { View, Text, StyleSheet } from 'react-native'
 import Slider from '@react-native-community/slider'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
+import { formatNumber } from '@open-vfr/shared/formatNumber'
 
 const SNAP_POINTS: { ft: number; label: string }[] = [
   { ft: 500,   label: '500 ft'    },
@@ -39,7 +40,7 @@ function ftToIdx(ft: number): number {
 }
 
 export function ftToLabel(ft: number): string {
-  return SNAP_POINTS.find((p) => p.ft === ft)?.label ?? `${ft.toLocaleString()} ft`
+  return SNAP_POINTS.find((p) => p.ft === ft)?.label ?? `${formatNumber(ft)} ft`
 }
 
 interface Props {

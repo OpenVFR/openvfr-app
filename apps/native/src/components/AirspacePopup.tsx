@@ -22,6 +22,7 @@ import { useNotamPrefs } from '../hooks/useNotamPrefs'
 import NotamBody from './NotamBody'
 import { NativeSheet } from './NativeSheet'
 import NotamViewControls from './NotamViewControls'
+import { formatNumber } from '@open-vfr/shared/formatNumber'
 
 export interface AirspaceFeatureProps {
   name:       string
@@ -533,7 +534,7 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
                     <DetailRow label="Lower" value={f.lower ?? (f.lower_ft != null ? `${f.lower_ft} ft` : 'GND')} />
                     <DetailRow label="Upper" value={f.upper ?? (f.upper_ft != null ? `${f.upper_ft} ft` : '—')} />
                     {f.lower_ft != null && f.upper_ft != null && (
-                      <DetailRow label="Thickness" value={`${(f.upper_ft - f.lower_ft).toLocaleString()} ft`} />
+                      <DetailRow label="Thickness" value={`${formatNumber((f.upper_ft - f.lower_ft))} ft`} />
                     )}
                     {f.frequencies && f.frequencies.length > 0 && (
                       <View style={styles.section}>

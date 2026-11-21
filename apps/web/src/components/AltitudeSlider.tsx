@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import css from './AltitudeSlider.module.css'
+import { formatNumber } from '@open-vfr/shared/formatNumber'
 
 // Snap points in feet that make sense for VFR pilots.
 // Labels show the aeronautical equivalent where relevant.
@@ -37,7 +38,7 @@ function ftToPos(ft: number): number {
 
 export function ftToLabel(ft: number): string {
   const snap = SNAP_POINTS.find((p) => p.ft === ft)
-  return snap?.label ?? `${ft.toLocaleString()} ft`
+  return snap?.label ?? `${formatNumber(ft)} ft`
 }
 
 interface Props {

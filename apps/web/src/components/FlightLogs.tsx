@@ -18,6 +18,7 @@ import type { AircraftProfileDocType } from '../db'
 import css from './FlightLogs.module.css'
 import { IconCheck, IconX, IconChevronDown, IconChevronRight, IconEye, IconEyeOff, IconDownload, IconUpload, IconTrash, IconPencil } from '@tabler/icons-react'
 import SectionActions from './SectionActions'
+import { formatNumber } from '@open-vfr/shared/formatNumber'
 
 const EVENT_ICON: Record<FlownEvent['kind'], string> = {
   takeoff: '\u2197', landing: '\u2198', 'touch-and-go': '\u21c4', gap: '\u26a0', airspace: '\u25a3',
@@ -429,7 +430,7 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
                     {formatLogDuration(stats && stats.airborneMs > 0 ? stats.airborneMs : log.endedAt - log.startedAt)}
                   </span>
                   {stats && stats.landings > 0 && <span className={css.itemMetaVal}>{landingsLabel(stats)}</span>}
-                  {log.maxAltFt > 0 && <span className={css.itemMetaVal}>max {Math.round(log.maxAltFt).toLocaleString()} ft</span>}
+                  {log.maxAltFt > 0 && <span className={css.itemMetaVal}>max {formatNumber(Math.round(log.maxAltFt))} ft</span>}
                   {stats && stats.gapCount > 0 && <span className={css.itemMetaVal} title="GPS track has gaps">⚠ gaps</span>}
                   <button className={css.eventsToggle} onClick={() => toggleEvents(log.id)} aria-expanded={eventsOpen.has(log.id)}>
                     {eventsOpen.has(log.id) ? <IconChevronDown size={11} aria-hidden="true" /> : <IconChevronRight size={11} aria-hidden="true" />}Events

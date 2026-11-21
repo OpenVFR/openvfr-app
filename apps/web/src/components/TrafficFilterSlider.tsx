@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import css from './AltitudeSlider.module.css'
 import { TRAFFIC_VERT_FILTER_OPTIONS, type TrafficVertFilter } from '../db/useSettings'
+import { formatNumber } from '@open-vfr/shared/formatNumber'
 
 /** Steps from tight to wide; the last one (0) is "All" = no filtering. */
 const STEPS = TRAFFIC_VERT_FILTER_OPTIONS
@@ -46,7 +47,7 @@ export default function TrafficFilterSlider({ value, onChange, flying }: Props) 
           onChange={(e) => onChange(STEPS[Number(e.target.value)])}
           className={css.track}
           aria-label={`Traffic vertical filter: ${label}`}
-          title={value === 0 ? 'Show all traffic regardless of altitude' : `Hide traffic more than ${value.toLocaleString()} ft above or below current altitude`}
+          title={value === 0 ? 'Show all traffic regardless of altitude' : `Hide traffic more than ${formatNumber(value)} ft above or below current altitude`}
         />
       </div>
       <div className={css.legend}>

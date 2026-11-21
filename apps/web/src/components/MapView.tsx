@@ -166,6 +166,7 @@ import { parseMapLink, hasMapLink, stripMapLinkParams } from '@open-vfr/shared/d
 import css from './MapView.module.css'
 import MapInfoBar from './MapInfoBar'
 import MapCompass from './MapCompass'
+import { formatNumber } from '@open-vfr/shared/formatNumber'
 
 // MapLibre layer IDs we listen to for aerodrome clicks.
 // All layers that reference the ofm-aerodromes source.
@@ -1735,7 +1736,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     )
     if (newCeiling === ceilingFt) return
     setCeilingFt(newCeiling)
-    setCeilingEscalatedMsg(`Ceiling raised to ${newCeiling.toLocaleString()} ft`)
+    setCeilingEscalatedMsg(`Ceiling raised to ${formatNumber(newCeiling)} ft`)
   }, [gpsPosition, ceilingFt, flyingMode])
 
   // BUG FIX (found live, real production impact): getMapStyle() bakes a

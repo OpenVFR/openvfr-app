@@ -6,6 +6,7 @@ import { TRAFFIC_CATEGORY_LABEL, trafficDeviceLabel, trafficNetworkLabel } from 
 import { IconX } from '@tabler/icons-react'
 import { orbitLabel, type LocalAreaInfo } from '@open-vfr/shared/aerodromeDetails'
 import { useLocalInfo } from '../utils/aerodromeDetails'
+import { formatNumber } from '@open-vfr/shared/formatNumber'
 
 // ── Feature type definitions ──────────────────────────────────────────────────
 // Each variant carries only the properties available in its GeoJSON source.
@@ -270,12 +271,12 @@ function TrafficBody({ f }: { f: TrafficFeature }) {
     <div className={css.body}>
       <div className={css.row}>
         <span className={css.label}>Altitude</span>
-        <span className={css.value}>{f.onGround ? 'On ground' : `${f.altFt.toLocaleString()} ft${vertArrow}`}</span>
+        <span className={css.value}>{f.onGround ? 'On ground' : `${formatNumber(f.altFt)} ft${vertArrow}`}</span>
       </div>
       {!f.onGround && f.relAltFt !== null && (
         <div className={css.row}>
           <span className={css.label}>Relative alt</span>
-          <span className={css.value}>{f.relAltFt > 0 ? '+' : ''}{f.relAltFt.toLocaleString()} ft</span>
+          <span className={css.value}>{f.relAltFt > 0 ? '+' : ''}{formatNumber(f.relAltFt)} ft</span>
         </div>
       )}
       <div className={css.row}>
@@ -289,7 +290,7 @@ function TrafficBody({ f }: { f: TrafficFeature }) {
       {!f.onGround && (
         <div className={css.row}>
           <span className={css.label}>Vert rate</span>
-          <span className={css.value}>{f.vertFpm > 0 ? '+' : ''}{f.vertFpm.toLocaleString()} fpm</span>
+          <span className={css.value}>{f.vertFpm > 0 ? '+' : ''}{formatNumber(f.vertFpm)} fpm</span>
         </div>
       )}
       {f.category !== null && f.category > 0 && (

@@ -13,6 +13,7 @@ import { buildTafTimeline, type TafPeriod } from '@open-vfr/shared/parseTaf'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
 import { fmtVis, fmtWind, visTone, ceilingTone, windTone, skyLabel, skyCover, SKY_ICON_CLOUD_TRANSFORM, type TileTone } from '@open-vfr/shared/wxFormat'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
+import { formatNumber } from '@open-vfr/shared/formatNumber'
 
 interface Props {
   periods: TafPeriod[] | null
@@ -128,7 +129,7 @@ export default function TafTimeline({ periods, lat, lng, maxHours = 24 }: Props)
           {slices.map((s) => (
             <Cell key={s.atMs}>
               <Text style={[styles.cellTxt, { color: TONE_COLOR[ceilingTone(s.ceilingFt)] }]}>
-                {s.ceilingFt != null ? `${s.ceilingFt.toLocaleString()} ft` : '—'}
+                {s.ceilingFt != null ? `${formatNumber(s.ceilingFt)} ft` : '—'}
               </Text>
             </Cell>
           ))}

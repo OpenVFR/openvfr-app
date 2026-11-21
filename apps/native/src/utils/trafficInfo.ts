@@ -6,6 +6,7 @@
 
 import type { FeatureInfo } from '../components/FeaturePopup'
 import { TRAFFIC_CATEGORY_LABEL, trafficDeviceLabel, trafficNetworkLabel } from '@open-vfr/shared/trafficState'
+import { formatNumber } from '@open-vfr/shared/formatNumber'
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 
@@ -26,9 +27,9 @@ export function trafficFeatureInfo(p: Record<string, unknown>, lngLat: [number, 
   const category = num(p.category)
 
   const vertArrow = vertFpm == null ? '' : vertFpm > 100 ? ' ↑' : vertFpm < -100 ? ' ↓' : ' →'
-  const signed = (n: number) => `${n > 0 ? '+' : ''}${n.toLocaleString()}`
+  const signed = (n: number) => `${n > 0 ? '+' : ''}${formatNumber(n)}`
   const rows: ({ label: string; value: string } | null)[] = [
-    { label: 'Altitude', value: onGround ? 'On ground' : altFt != null ? `${altFt.toLocaleString()} ft${vertArrow}` : 'Unknown' },
+    { label: 'Altitude', value: onGround ? 'On ground' : altFt != null ? `${formatNumber(altFt)} ft${vertArrow}` : 'Unknown' },
     !onGround && relAltFt != null ? { label: 'Relative alt', value: `${signed(relAltFt)} ft` } : null,
     speedKts != null ? { label: 'Speed', value: `${speedKts} kt` } : null,
     trackDeg != null ? { label: 'Track', value: `${trackDeg}°` } : null,

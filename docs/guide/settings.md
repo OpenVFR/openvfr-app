@@ -27,6 +27,8 @@ banners, Navigation, Vario, Simulator, Country, Offline Data and About.
 | UI scale (native) | multiplier | 1.0 | For kneeboard or dashboard mounts viewed from a distance |
 | Country | one of the available countries | | Switches map and data. See [Offline use](./offline-and-data.md) |
 
+Altitudes, speeds and other flying numbers always show the same way on every device: a comma between thousands and a dot for decimals (1,300 ft), whatever language or region the phone or browser is set to. Dates and times follow the device.
+
 ## Flying mode
 
 | Setting | Options | Default | Notes |

@@ -208,6 +208,8 @@ files worth knowing up front:
 
 **Native: react-native-svg memory traps (Android).** (1) `opacity` on a `<G>` or `<Text>` makes it draw into its own canvas-sized bitmap on every redraw; put `opacity` / `fillOpacity` / `strokeOpacity` on the leaf shapes instead. (2) Upstream `TSpanView` called `setFontVariationSettings` on every text draw, which builds a new Typeface and FreeType face each time; they were only freed by a rare Java GC, so native memory grew ~10 MB/min during a flight. `patches/react-native-svg@15.16.0.patch` fixes it; keep the patch (or re-check) when upgrading react-native-svg. After a patch change delete `apps/native/android/build/generated/autolinking/`, or Gradle keeps compiling the old unpatched copy. To find native leaks, add `<profileable android:shell="true"/>` to the generated manifest of a local release build and record a perfetto `android.heapprofd` trace while Simulate runs; compare `dumpsys meminfo` Native Heap over 15+ min.
 
+**Numbers a pilot reads go through `formatNumber` (`@open-vfr/shared/formatNumber`), never a bare `.toLocaleString()`.** The bare call follows the device locale, so 1300 ft can read "1.300 ft". `formatNumber.test.ts` fails on a new bare call (dates are exempt: the line must contain `new Date(` or `Date.now()`).
+
 **Type-check web with `pnpm typecheck`, not `tsc --noEmit`.** `apps/web/tsconfig.json` is a solution file (`"files": []` plus references), so a bare `tsc --noEmit` in `apps/web` checks nothing and always passes. `pnpm typecheck` (root) runs the web app + node projects and native's `tsc --noEmit`.
 
 ---

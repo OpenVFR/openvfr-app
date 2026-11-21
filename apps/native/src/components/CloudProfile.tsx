@@ -10,6 +10,7 @@ import { View, Text } from 'react-native'
 import Svg, { Path } from 'react-native-svg'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import type { ParsedCloudLayer } from '@open-vfr/shared/fetchWx'
+import { formatNumber } from '@open-vfr/shared/formatNumber'
 
 interface Props {
   clouds: ParsedCloudLayer[]
@@ -54,7 +55,7 @@ export default function CloudProfile({ clouds }: Props) {
             <Svg viewBox="0 0 24 24" width={scaledTheme.scale(20)} height={scaledTheme.scale(20)}>
               <Path d={CLOUD_ICON_PATH} fill={COVER_COLOR[layer.cover]} opacity={layer.cover === 'FEW' ? 0.75 : layer.cover === 'SCT' ? 0.9 : 1} />
             </Svg>
-            <Text style={styles.layerLabel}>{COVER_LABEL[layer.cover]} {layer.baseFt.toLocaleString()} ft</Text>
+            <Text style={styles.layerLabel}>{COVER_LABEL[layer.cover]} {formatNumber(layer.baseFt)} ft</Text>
           </View>
         ))}
       </View>

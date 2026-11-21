@@ -186,6 +186,7 @@ import { NativeSheet } from '../components/NativeSheet'
 import { BaroPromptModal } from '../components/BaroPromptModal'
 import { aerodromeId } from '@open-vfr/shared/aerodromeId'
 import { CIRCUIT_FOCUS_COLOR } from '@open-vfr/shared/featureColors'
+import { formatNumber } from '@open-vfr/shared/formatNumber'
 /** How often the flown trail is rebuilt from the active log (ms). */
 const TRAIL_REFRESH_MS = 5_000
 
@@ -743,7 +744,7 @@ function MapScreenForCountry() {
     )
     if (newCeiling === ceilingFt) return
     update({ airspaceCeilingFt: newCeiling })
-    setCeilingEscalatedMsg(`Ceiling raised to ${newCeiling.toLocaleString()} ft`)
+    setCeilingEscalatedMsg(`Ceiling raised to ${formatNumber(newCeiling)} ft`)
   }, [activePosition, bestAltFt, settings.airspaceCeilingFt, flyingActive])
 
   // Regional (FIR-wide) NOTAMs -- restricted/danger areas, navaid outages,

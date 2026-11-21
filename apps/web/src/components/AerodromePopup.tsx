@@ -40,6 +40,7 @@ import { setCircuitFocus, setRelevantAerodrome, useCircuitFocus } from '../utils
 import { loadStations as loadStationsShared, type StationRecord } from '@open-vfr/shared/wxStations'
 import { countryDatasetSource } from '@open-vfr/shared/countryData'
 import { IconChevronDown, IconChevronUp, IconHome, IconHomeFilled, IconMessageReport, IconX } from '@tabler/icons-react'
+import { formatNumber } from '@open-vfr/shared/formatNumber'
 
 /** A runway end ("06"). It is a button: tapping it shows only that end's
  *  circuits on the map (again to show all). */
@@ -1088,7 +1089,7 @@ export default function AerodromePopup({
                           title={metar.ceilingFt == null && metar.clouds && metar.clouds !== 'CAVOK' ? 'No BKN/OVC layer reported — FEW/SCT clouds don’t count as a ceiling' : undefined}
                         >
                           <span className={css.wxTileLabel}>Ceiling</span>
-                          <span className={css.wxTileValue}>{metar.ceilingFt != null ? `${metar.ceilingFt.toLocaleString()} ft` : metar.clouds === 'CAVOK' ? 'CAVOK' : 'No ceiling'}</span>
+                          <span className={css.wxTileValue}>{metar.ceilingFt != null ? `${formatNumber(metar.ceilingFt)} ft` : metar.clouds === 'CAVOK' ? 'CAVOK' : 'No ceiling'}</span>
                         </div>
                         <div className={`${css.wxTile} ${css.wxTileinfo}`}>
                           <span className={css.wxTileLabel}>QNH</span>
@@ -1284,15 +1285,15 @@ export default function AerodromePopup({
               </div>
               {densityAltFt != null ? (
                 <div className={css.daResult} style={{ color: daColour(densityAltFt) }}>
-                  {densityAltFt.toLocaleString()} ft
+                  {formatNumber(densityAltFt)} ft
                   <span className={css.daResultLabel}>density alt</span>
                   {pressAltFt != null && (
-                    <span className={css.daPressAlt}>PA {Math.round(pressAltFt).toLocaleString()} ft</span>
+                    <span className={css.daPressAlt}>PA {formatNumber(Math.round(pressAltFt))} ft</span>
                   )}
                 </div>
               ) : pressAltFt != null ? (
                 <div className={css.daHint}>
-                  PA {Math.round(pressAltFt).toLocaleString()} ft — enter OAT for density alt
+                  PA {formatNumber(Math.round(pressAltFt))} ft — enter OAT for density alt
                 </div>
               ) : (
                 <div className={css.daHint}>Enter QNH and OAT</div>

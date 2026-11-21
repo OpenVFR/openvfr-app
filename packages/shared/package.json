@@ -24,6 +24,7 @@
     "./pointElevation": "./src/pointElevation.ts",
     "./msaMargins": "./src/msaMargins.ts",
     "./preflightWarnings": "./src/preflightWarnings.ts",
+    "./formatNumber": "./src/formatNumber.ts",
     "./preflightPrompts": "./src/preflightPrompts.ts",
     "./preflightNotams": "./src/preflightNotams.ts",
     "./routeSettle": "./src/routeSettle.ts",

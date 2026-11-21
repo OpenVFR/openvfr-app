@@ -104,6 +104,7 @@ import { useLegForecastWind, type LegWindQuery } from '../hooks/useLegForecastWi
 import * as FileSystem from 'expo-file-system'
 import * as Sharing from 'expo-sharing'
 import * as DocumentPicker from 'expo-document-picker'
+import { formatNumber } from '@open-vfr/shared/formatNumber'
 
 function fmtTime(totalMins: number): string {
   const h = Math.floor(totalMins / 60)
@@ -143,7 +144,7 @@ function logInfo(log: LogLike): { stats: LogStats | null; summary: string } {
     const st = computeLogStats(JSON.parse(log.trackJson || '[]'), LOG_STATS_THR)
     const parts = [formatLogDuration(st.airborneMs > 0 ? st.airborneMs : log.endedAt - log.startedAt)]
     if (st.landings > 0) parts.push(`${st.landings} landing${st.landings === 1 ? '' : 's'}${st.touchAndGos > 0 ? ` (${st.touchAndGos} T&G)` : ''}`)
-    if (log.maxAltFt > 0) parts.push(`max ${Math.round(log.maxAltFt).toLocaleString()} ft`)
+    if (log.maxAltFt > 0) parts.push(`max ${formatNumber(Math.round(log.maxAltFt))} ft`)
     if (st.gapCount > 0) parts.push('⚠ gaps')
     out = { stats: st, summary: parts.join(' · ') }
   } catch { /* corrupt track: no summary */ }

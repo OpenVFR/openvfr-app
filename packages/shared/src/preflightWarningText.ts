@@ -13,6 +13,7 @@ import type { NotamItem } from './fetchNotam'
 import { notamTitle } from './notamQCode'
 import { notamSummary } from './preflightNotams'
 import type { PreflightWarning, WarningFix, WarningLevel } from './preflightWarnings'
+import { formatNumber } from './formatNumber'
 
 /** Parameters per warning code. Numbers are raw values (rounding for display happens in the formatter, as before). */
 export interface WarningParamsByCode {
@@ -58,8 +59,8 @@ export type PreflightWarningItem = {
   }
 }[WarningCode]
 
-const en = (n: number) => n.toLocaleString('en-US')
-const here = (n: number) => n.toLocaleString()
+const en = formatNumber      // one fixed format for every number in a warning (was: device locale in the airspace lines, en-US elsewhere)
+const here = formatNumber
 
 function classLabel(cls: string, type: string): string {
   return /^[A-F]$/.test(cls)

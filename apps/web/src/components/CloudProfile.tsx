@@ -10,6 +10,7 @@
 
 import css from './CloudProfile.module.css'
 import type { ParsedCloudLayer } from '@open-vfr/shared/fetchWx'
+import { formatNumber } from '@open-vfr/shared/formatNumber'
 
 interface Props {
   clouds: ParsedCloudLayer[]
@@ -42,7 +43,7 @@ export default function CloudProfile({ clouds }: Props) {
             <svg viewBox="0 0 24 24" className={`${css.layerIcon} ${css[`cover${layer.cover}`]}`}>
               <path d="M6 18 a3.5 3.5 0 0 1 0.3 -6.98 A4.5 4.5 0 0 1 15 10.2 A3.2 3.2 0 0 1 18 18 Z" />
             </svg>
-            <span className={css.layerLabel}>{COVER_LABEL[layer.cover]} {layer.baseFt.toLocaleString()} ft</span>
+            <span className={css.layerLabel}>{COVER_LABEL[layer.cover]} {formatNumber(layer.baseFt)} ft</span>
           </div>
         ))}
       </div>
