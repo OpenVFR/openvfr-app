@@ -249,3 +249,20 @@ describe('robustness', () => {
     expect(await url).toBe(`${BASE}/se-airspace.geojson`)
   })
 })
+
+describe('manifestFilesOfCountry', () => {
+  it('lists the manifest files of one country, sorted, and nothing before the manifest has loaded', async () => {
+    expect(mod.manifestFilesOfCountry('se')).toEqual([])
+    const f = deferredFetch()
+    vi.stubGlobal('fetch', f.fetchMock)
+    const p = mod.loadTileManifest(BASE)
+    const h = 'ab'.repeat(32)
+    f.respond({ generated_at: 'x', countries: {}, files: {
+      'se-airspace.geojson': { sha256: h, bytes: 1 }, 'se-aerodromes.geojson': { sha256: h, bytes: 1 }, 'dk-aerodromes.geojson': { sha256: h, bytes: 1 }, 'europe-overview.pmtiles': { sha256: h, bytes: 1 } } })
+    await p
+    expect(mod.manifestFilesOfCountry('se')).toEqual(['se-aerodromes.geojson', 'se-airspace.geojson'])
+    expect(mod.manifestFilesOfCountry('SE')).toEqual(['se-aerodromes.geojson', 'se-airspace.geojson'])
+    expect(mod.manifestFilesOfCountry('dk')).toEqual(['dk-aerodromes.geojson'])
+    expect(mod.manifestFilesOfCountry('no')).toEqual([])
+  })
+})

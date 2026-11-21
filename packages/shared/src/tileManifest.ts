@@ -411,6 +411,16 @@ export function getCachedTileManifest(): TileManifest | null {
 }
 
 /**
+ * The names of the published files that belong to one country (`se-...`), from the manifest's file list, sorted; empty before the manifest
+ * has loaded. The manifest lists every file in the tiles folder, so a client can find out which optional files a country has (for example
+ * a file added later next to the aerodromes file) without a request per name.
+ */
+export function manifestFilesOfCountry(country: string): string[] {
+  const prefix = `${country.toLowerCase()}-`
+  return Object.keys(state.manifest?.files ?? {}).filter(n => n.startsWith(prefix)).sort()
+}
+
+/**
  * Builds a cache-busted URL for a static tile file. Returns
  * `${tilesBaseUrl}/${filename}?v=<sha256 prefix>` if the manifest has an
  * entry for filename, else the plain unversioned URL as a safe fallback.
