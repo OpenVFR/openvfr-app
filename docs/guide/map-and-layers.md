@@ -91,6 +91,8 @@ landmarks and your places by name or code. You can also type a coordinate
 (in common formats), or a bearing and distance from a point, and jump
 there.
 
+Accents and capitals do not matter when you search by name: "Vasteras" finds "Västerås", "Kobenhavn" finds "København" and "Dusseldorf" finds "Düsseldorf". The same goes for the lists of your places and routes and for direct to.
+
 ## Map tools
 
 ![Web app: the map tools menu](./images/web-map-tools-menu.png)

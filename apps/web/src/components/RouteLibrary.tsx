@@ -13,6 +13,7 @@ import SyncRefusedNote from './SyncRefusedNote'
 import css from './RouteLibrary.module.css'
 import { RouteCloseContext } from './routeCloseContext'
 import { IconCheck, IconChevronDown, IconChevronRight, IconFolderOpen, IconX } from '@tabler/icons-react'
+import { foldForSearch } from '@open-vfr/shared/searchFold'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -150,7 +151,7 @@ export default function RouteLibrary({
 
   // ── Filtered + sorted route list ─────────────────────────────────────────
   const filtered = routes
-    .filter(r => !search || r.name.toLowerCase().includes(search.toLowerCase()))
+    .filter(r => !search || foldForSearch(r.name).includes(foldForSearch(search)))
     .sort(sortBy === 'date'
       ? (a, b) => b.updatedAt - a.updatedAt
       : (a, b) => a.name.localeCompare(b.name))

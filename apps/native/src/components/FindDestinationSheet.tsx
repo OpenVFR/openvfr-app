@@ -28,6 +28,7 @@ import {
   aerodromeToWaypoint, hasAvgas, hasJet, isHard, isGrass, fmtBrg, fmtDist,
   type AerodromeEntry, type AerodromeResult, type FuelFilter, type SurfaceFilter,
 } from '@open-vfr/shared/findDestination'
+import { foldForSearch } from '@open-vfr/shared/searchFold'
 
 interface Centre {
   lat: number
@@ -153,9 +154,9 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
   )
 
   const placeMatches = React.useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = foldForSearch(search.trim())
     if (!q || !places) return []
-    return places.filter(p => p.name.toLowerCase().includes(q) || (p.folder ?? '').toLowerCase().includes(q)).slice(0, 5)
+    return places.filter(p => foldForSearch(p.name).includes(q) || foldForSearch(p.folder ?? '').includes(q)).slice(0, 5)
   }, [places, search])
 
   const renderRow = ({ item: a }: { item: AerodromeResult }) => (

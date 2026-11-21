@@ -105,6 +105,7 @@ import * as FileSystem from 'expo-file-system'
 import * as Sharing from 'expo-sharing'
 import * as DocumentPicker from 'expo-document-picker'
 import { formatNumber } from '@open-vfr/shared/formatNumber'
+import { foldForSearch } from '@open-vfr/shared/searchFold'
 
 function fmtTime(totalMins: number): string {
   const h = Math.floor(totalMins / 60)
@@ -226,9 +227,9 @@ export function PlanScreen() {
     [userWaypoints],
   )
   const placeGroups = useMemo(() => {
-    const q = placeQuery.trim().toLowerCase()
+    const q = foldForSearch(placeQuery.trim())
     const list = q
-      ? userWaypoints.filter(w => w.name.toLowerCase().includes(q) || (w.folder ?? '').toLowerCase().includes(q))
+      ? userWaypoints.filter(w => foldForSearch(w.name).includes(q) || foldForSearch(w.folder ?? '').includes(q))
       : userWaypoints
     return groupPlaces(list)
   }, [userWaypoints, placeQuery])

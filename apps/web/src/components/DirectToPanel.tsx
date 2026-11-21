@@ -19,6 +19,7 @@ import { distanceNm, bearingDeg } from '../utils/routeCalc'
 import css from './DirectToPanel.module.css'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { IconX } from '@tabler/icons-react'
+import { foldForSearch } from '@open-vfr/shared/searchFold'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -117,11 +118,11 @@ export default function DirectToPanel({
 
   // ── Sort + filter ─────────────────────────────────────────────────────────
   const sorted = useMemo(() => {
-    const q = search.trim().toUpperCase()
+    const q = foldForSearch(search.trim())
     return aerodromes
       .filter(a => {
         if (minRunwayM > 0 && a.maxRunwayM > 0 && a.maxRunwayM < minRunwayM) return false
-        if (q && !a.icao.includes(q) && !a.name.toUpperCase().includes(q)) return false
+        if (q && !a.icao.includes(q) && !foldForSearch(a.name).includes(q)) return false
         return true
       })
       .map(a => {

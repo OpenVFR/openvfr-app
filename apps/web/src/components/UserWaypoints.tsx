@@ -6,6 +6,7 @@ import { nextPlaceName } from '../utils/places'
 import css from './UserWaypoints.module.css'
 import { IconX, IconFocus2, IconPlus, IconPencil, IconCornerDownRight, IconDownload, IconUpload, IconMapPin, IconEye, IconEyeOff } from '@tabler/icons-react'
 import SectionActions from './SectionActions'
+import { foldForSearch } from '@open-vfr/shared/searchFold'
 
 // ── GPX helpers ───────────────────────────────────────────────────────────────
 
@@ -91,9 +92,9 @@ export default function UserWaypoints({
   // All folder names (empty string → "Unfiled").
   const folders = Array.from(new Set(['', ...waypoints.map(w => w.folder)]))
 
-  const q = query.trim().toLowerCase()
+  const q = foldForSearch(query.trim())
   const matches = (w: UserWaypointDocType) =>
-    !q || w.name.toLowerCase().includes(q) || w.folder.toLowerCase().includes(q)
+    !q || foldForSearch(w.name).includes(q) || foldForSearch(w.folder).includes(q)
   const wpByFolder = (folder: string) => waypoints.filter(w => w.folder === folder && matches(w))
 
   function commitEdit(wp: UserWaypointDocType) {

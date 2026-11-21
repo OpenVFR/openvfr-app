@@ -5,6 +5,7 @@ import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/country
 import { parseBearingDistance, pointFromBearingDistance, describeBearingDistance } from '@open-vfr/shared/bearingDistance'
 import { parseCoordinate, formatCoordinate } from '@open-vfr/shared/coordinateParse'
 import { IconX } from '@tabler/icons-react'
+import { foldForSearch } from '@open-vfr/shared/searchFold'
 
 export type FindResult = {
   kind: 'AD' | 'VOR' | 'NDB' | 'MRP' | 'RP' | 'LL' | 'PL'
@@ -107,13 +108,13 @@ function buildIndex(): Promise<FindResult[]> {
 }
 
 function search(q: string, index: FindResult[]): FindResult[] {
-  const up = q.toUpperCase().trim()
+  const up = foldForSearch(q.trim())
   if (!up) return []
   // Exact ICAO/id prefix first, then name substring
   const exact = index.filter(r => r.id.toUpperCase().startsWith(up))
   const names = index.filter(r =>
     !r.id.toUpperCase().startsWith(up) &&
-    (r.name.toUpperCase().includes(up) || r.id.toUpperCase().includes(up))
+    (foldForSearch(r.name).includes(up) || r.id.toUpperCase().includes(up))
   )
   return [...exact, ...names].slice(0, 12)
 }
@@ -149,10 +150,10 @@ const BADGE_CLASS: Record<FindResult['kind'], string> = {
 }
 
 function searchPlaces(q: string, places: Props['places']): FindResult[] {
-  const up = q.trim().toUpperCase()
+  const up = foldForSearch(q.trim())
   if (!up || !places) return []
   return places
-    .filter(p => p.name.toUpperCase().includes(up) || p.folder.toUpperCase().includes(up))
+    .filter(p => foldForSearch(p.name).includes(up) || foldForSearch(p.folder).includes(up))
     .slice(0, 5)
     .map(p => ({ kind: 'PL' as const, id: p.id, name: p.name, sub: p.folder || 'Saved place', lng: p.lng, lat: p.lat }))
 }

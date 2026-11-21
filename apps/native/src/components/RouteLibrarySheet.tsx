@@ -29,6 +29,7 @@ import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../sty
 import { NativeSheet, useSheetMaxHeight } from './NativeSheet'
 import { distanceNm } from '../utils/routeCalc'
 import { assistantReviewLabel } from '@open-vfr/shared/types'
+import { foldForSearch } from '@open-vfr/shared/searchFold'
 
 interface Props {
   /** Current active route waypoints */
@@ -135,8 +136,8 @@ export function RouteLibrarySheet({
   // The search box shows with more than 5 routes; the filter applies only while it shows.
   const searchVisible = routes.length > 5
   const shownRoutes = useMemo(() => {
-    const q = searchVisible ? search.trim().toLowerCase() : ''
-    return q ? routes.filter(r => r.name.toLowerCase().includes(q)) : routes
+    const q = searchVisible ? foldForSearch(search.trim()) : ''
+    return q ? routes.filter(r => foldForSearch(r.name).includes(q)) : routes
   }, [routes, search, searchVisible])
   // A fresh sheet starts unfiltered.
   useEffect(() => { if (!open) setSearch('') }, [open])

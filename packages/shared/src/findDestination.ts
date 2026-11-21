@@ -10,6 +10,7 @@
 import type { AircraftProfileDocType, FuelCode } from './types'
 import { sellsAnyFuel } from './fuelTypes'
 import { distanceNm, bearingDeg, type RouteWaypoint } from './routeCalc'
+import { foldForSearch } from './searchFold'
 
 export interface AerodromeEntry {
   icao:        string
@@ -130,14 +131,14 @@ export function filterAndSortAerodromes(
   filters:      FindDestFilters,
   glideRangeNm: number | null,
 ): AerodromeResult[] {
-  const q = (filters.search ?? '').trim().toUpperCase()
+  const q = foldForSearch((filters.search ?? '').trim())
   const minRunwayM = filters.minRunwayM ?? 0
   const fuelFilter = filters.fuelFilter ?? 'any'
   const surfFilter = filters.surfFilter ?? 'any'
 
   return aerodromes
     .filter(a => {
-      if (q && !a.icao.includes(q) && !a.name.toUpperCase().includes(q)) return false
+      if (q && !a.icao.includes(q) && !foldForSearch(a.name).includes(q)) return false
       if (minRunwayM > 0 && a.maxRunwayM > 0 && a.maxRunwayM < minRunwayM) return false
       if (fuelFilter === 'avgas' && !hasAvgas(a.fuel)) return false
       if (fuelFilter === 'jet'   && !hasJet(a.fuel))   return false
