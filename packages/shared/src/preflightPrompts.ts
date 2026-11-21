@@ -16,6 +16,40 @@ export interface PreflightPrompt {
   code:   string
   title:  string
   detail: string
+  /** What the title and detail were made from (`formatPreflightPrompt`). */
+  params?: PromptParams
+}
+
+/** Parameters per prompt code; `computePrompts` records these and `formatPreflightPrompt` is the only place that words them. */
+export interface PromptParamsByCode {
+  'winds-unavailable': { missing: number; legs: number }
+  'flightplan-likely': Record<string, never>
+  'gar-uk': Record<string, never>
+}
+export type PromptCode = keyof PromptParamsByCode
+export type PromptParams = PromptParamsByCode[PromptCode]
+export type PreflightPromptItem = { [C in PromptCode]: { code: C; params: PromptParamsByCode[C] } }[PromptCode]
+
+const WORDS: { [C in PromptCode]: (p: PromptParamsByCode[C]) => { title: string; detail: string } } = {
+  'winds-unavailable': p => ({
+    title:  'Wind data unavailable',
+    detail: p.missing === p.legs
+      ? 'No wind is known for this route, so time and fuel assume still air. Enter a wind or refresh the forecast.'
+      : `No wind is known for ${p.missing} of ${p.legs} legs; time and fuel assume still air on those.`,
+  }),
+  'flightplan-likely': () => ({
+    title:  'Route crosses a national border',
+    detail: 'A flight plan may be required for a flight between these countries. Check the national rules for each.',
+  }),
+  'gar-uk': () => ({
+    title:  'UK General Aviation Report',
+    detail: 'Flights between the UK and another country normally need a General Aviation Report filed in advance. Check the deadline and where to submit it.',
+  }),
+}
+
+/** The one place a prompt is worded: code + params -> the English title and detail. */
+export function formatPreflightPrompt(item: PreflightPromptItem): PreflightPrompt {
+  return { code: item.code, params: item.params, ...(WORDS[item.code] as (p: unknown) => { title: string; detail: string })(item.params) }
 }
 
 export interface PromptInput {
@@ -73,37 +107,19 @@ export function routeCountries(waypoints: RouteWaypoint[]): string[] {
 
 export function computePrompts(input: PromptInput): PreflightPrompt[] {
   const { waypoints, legWinds, windsLoading } = input
-  const prompts: PreflightPrompt[] = []
-  if (waypoints.length < 2) return prompts
+  const prompts: PreflightPromptItem[] = []
+  if (waypoints.length < 2) return []
 
   if (legWinds && !windsLoading) {
     const missing = legWinds.filter((w) => w == null).length
-    if (missing > 0) {
-      prompts.push({
-        code:   'winds-unavailable',
-        title:  'Wind data unavailable',
-        detail: missing === legWinds.length
-          ? 'No wind is known for this route, so time and fuel assume still air. Enter a wind or refresh the forecast.'
-          : `No wind is known for ${missing} of ${legWinds.length} legs; time and fuel assume still air on those.`,
-      })
-    }
+    if (missing > 0) prompts.push({ code: 'winds-unavailable', params: { missing, legs: legWinds.length } })
   }
 
   const countries = routeCountries(waypoints)
   if (countries.length > 1) {
-    prompts.push({
-      code:   'flightplan-likely',
-      title:  'Route crosses a national border',
-      detail: 'A flight plan may be required for a flight between these countries. Check the national rules for each.',
-    })
-    if (countries.includes('gb')) {
-      prompts.push({
-        code:   'gar-uk',
-        title:  'UK General Aviation Report',
-        detail: 'Flights between the UK and another country normally need a General Aviation Report filed in advance. Check the deadline and where to submit it.',
-      })
-    }
+    prompts.push({ code: 'flightplan-likely', params: {} })
+    if (countries.includes('gb')) prompts.push({ code: 'gar-uk', params: {} })
   }
 
-  return prompts
+  return prompts.map(formatPreflightPrompt)
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computePrompts, routeCountries, unambiguousRegion, regionFromIcao } from './preflightPrompts'
+import { computePrompts, routeCountries, unambiguousRegion, regionFromIcao, formatPreflightPrompt } from './preflightPrompts'
 
 const stockholm = { lat: 59.65, lng: 17.94, name: 'ESSA' }
 const gothenburg = { lat: 57.66, lng: 12.28, name: 'ESGG' }
@@ -59,5 +59,17 @@ describe('computePrompts', () => {
   })
   it('needs two waypoints', () => {
     expect(computePrompts({ waypoints: [stockholm], legWinds: [] })).toEqual([])
+  })
+})
+
+describe('formatPreflightPrompt: the English of every prompt code', () => {
+  it('words each code', () => {
+    expect(formatPreflightPrompt({ code: 'winds-unavailable', params: { missing: 2, legs: 2 } })).toMatchObject({ code: 'winds-unavailable', title: 'Wind data unavailable',
+      detail: 'No wind is known for this route, so time and fuel assume still air. Enter a wind or refresh the forecast.' })
+    expect(formatPreflightPrompt({ code: 'winds-unavailable', params: { missing: 1, legs: 3 } }).detail).toBe('No wind is known for 1 of 3 legs; time and fuel assume still air on those.')
+    expect(formatPreflightPrompt({ code: 'flightplan-likely', params: {} })).toMatchObject({ title: 'Route crosses a national border',
+      detail: 'A flight plan may be required for a flight between these countries. Check the national rules for each.' })
+    expect(formatPreflightPrompt({ code: 'gar-uk', params: {} })).toMatchObject({ title: 'UK General Aviation Report',
+      detail: 'Flights between the UK and another country normally need a General Aviation Report filed in advance. Check the deadline and where to submit it.' })
   })
 })

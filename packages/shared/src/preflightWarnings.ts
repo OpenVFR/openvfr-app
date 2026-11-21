@@ -20,16 +20,19 @@ import { crosswindExceedances, thresholdsByIcao, type LandingPoint } from './cro
 import { runwayShortfalls, runwaysByIcao, PERF_FACTORS, isPavedSurface, type RunwayPoint } from './runwayPerformance'
 import type { ParsedWind } from './fetchWx'
 import { collectRoutePois, poiBaseFt } from './routePois'
-import { routeNotamAreas, notamSummary } from './preflightNotams'
-import { notamTitle } from './notamQCode'
+import { routeNotamAreas } from './preflightNotams'
 import type { NotamItem } from './fetchNotam'
 import { legSpans, legMsaList, legBelowMsa } from './legLevelDrag'
 import { airspaceCategory, DEFAULT_AIRSPACE_LEVELS, type AirspaceAlertLevels, type AirspaceCategory } from './airspaceAlertLevel'
-import { assistantReviewLabel, type RouteWaypoint, type LegOverride, type AircraftProfileDocType, type AssistantReview } from './types'
+import { type RouteWaypoint, type LegOverride, type AircraftProfileDocType, type AssistantReview } from './types'
 import { landingPoints } from './routeCalc'
 import { hasVhfRadio } from './icaoFlightPlan'
 import type { MefGrid } from './mefGrid'
 import { waterStretches } from './waterGlide'
+import { formatPreflightWarning, type PreflightWarningItem } from './preflightWarningText'
+
+export { formatPreflightWarning } from './preflightWarningText'
+export type { PreflightWarningItem, WarningCode, WarningParamsByCode } from './preflightWarningText'
 
 // ---------------------------------------------------------------------------
 // Warning types
@@ -46,6 +49,8 @@ export interface PreflightWarning {
   code:   string
   title:  string
   detail: string
+  /** What the title and detail were made from (`formatPreflightWarning`): a client can word the warning itself. */
+  params?: PreflightWarningItem['params']
   fix?:   WarningFix
   /** Where on the route this applies (NM along it), so a client can show it on the map. */
   focusNm?: number
@@ -193,70 +198,41 @@ export function computeWarnings(
   extras: PreflightExtras = {},
 ): PreflightWarning[] {
   const { terrainPts = [], airspaceLevels = DEFAULT_AIRSPACE_LEVELS, aerodromes, notams, airspace, nowMs, unavailable, surfaceWinds, surfaceTempsC, routeReview, mefGrids, lakes } = extras
-  const warnings: PreflightWarning[] = []
+  const warnings: PreflightWarningItem[] = []
 
   // ── Terrain unavailable: the MSA check below is silently skipped and AGL
   // airspace limits are compared at their raw height. Say so rather than
   // let an empty list read as "all clear".
   if (terrainFailed) {
-    warnings.push({
-      level:  'warn',
-      code:   'terrain-unavailable',
-      title:  'Terrain data unavailable',
-      detail: msaPts.length > 0
-        ? 'No elevation data for this route: the Minimum Safe Altitude check uses the terrain maximum grid (highest terrain per ~460 m cell, so conservative) and airspace limits given above ground (AGL) are checked at their raw height.'
-        : 'No elevation data for this route: the Minimum Safe Altitude check was skipped and airspace limits given above ground (AGL) are checked at their raw height.',
-    })
+    warnings.push({ level: 'warn', code: 'terrain-unavailable', params: { hasMsa: msaPts.length > 0 } })
   }
 
   // ── Route data that did not load: those checks did not run ──────────────
   if (unavailable?.airspace || unavailable?.obstacles) {
-    const what = [unavailable.airspace && 'airspace', unavailable.obstacles && 'obstacles and landmarks'].filter(Boolean).join(' and ')
-    warnings.push({
-      level:  'warn',
-      code:   'route-data-unavailable',
-      title:  `Route data unavailable: ${what}`,
-      detail: `The ${what} file could not be loaded, so ${unavailable.airspace ? 'airspace' : ''}${unavailable.airspace && unavailable.obstacles ? ' and ' : ''}${unavailable.obstacles ? 'obstacle clearance' : ''} was not checked. Check the connection or download the area for offline use.`,
-    })
+    warnings.push({ level: 'warn', code: 'route-data-unavailable', params: { airspace: !!unavailable.airspace, obstacles: !!unavailable.obstacles } })
   }
   if (unavailable?.aerodromes) {
-    warnings.push({ level: 'info', code: 'aerodromes-unavailable', title: 'Aerodrome data unavailable', detail: 'Airfield proximity was not checked.' })
+    warnings.push({ level: 'info', code: 'aerodromes-unavailable', params: {} })
   }
   if (unavailable?.notams) {
-    warnings.push({ level: 'info', code: 'notams-unavailable', title: 'NOTAM restricted areas not checked', detail: unavailable.notams })
+    warnings.push({ level: 'info', code: 'notams-unavailable', params: { reason: unavailable.notams } })
   }
 
   // ── 0. Aircraft profile referenced by this route is not here ───────────
   // (route.aircraftId set, but no matching aircraft_profiles doc: deleted, or
   // made on another device and never synced, e.g. refused by the server)
   if (aircraftId && !aircraft) {
-    warnings.push({
-      level:  'warn',
-      code:   'aircraft-profile-missing',
-      title:  'Aircraft not found',
-      detail: 'This route was planned with an aircraft that is not in your account or on this device: it was deleted, or made on another device and never reached the server (that device\'s aircraft list says so). Fuel and weight & balance calculations are unavailable until you pick an aircraft.',
-    })
+    warnings.push({ level: 'warn', code: 'aircraft-profile-missing', params: {} })
   }
 
   // ── 0b. Aircraft profile written by an AI assistant, not yet reviewed ───
   if (aircraft?.assistantReview) {
-    const r = aircraft.assistantReview
-    warnings.push({
-      level:  'warn',
-      code:   'aircraft-assistant-review',
-      title:  'Check the aircraft profile',
-      detail: `${assistantReviewLabel(r)} (assistant connection). Fuel, speeds and runway checks use these values: compare them with the POH, then open and save the aircraft.`,
-    })
+    warnings.push({ level: 'warn', code: 'aircraft-assistant-review', params: { review: aircraft.assistantReview } })
   }
 
   // ── 0c. Route written by an AI assistant, not yet reviewed ──────────────
   if (routeReview) {
-    warnings.push({
-      level:  'warn',
-      code:   'route-assistant-review',
-      title:  'Check the route',
-      detail: `${assistantReviewLabel(routeReview)} (assistant connection). Check every point, level and fuel stop on the map, then save the route.`,
-    })
+    warnings.push({ level: 'warn', code: 'route-assistant-review', params: { review: routeReview } })
   }
 
   // ── 0d. Over water beyond gliding distance from land (single engine) ───
@@ -269,16 +245,16 @@ export function computeWarnings(
     })
     for (const st of stretches) {
       if (st.beyondGlideNm <= 0) continue
-      const where = st.sea ? 'the sea' : st.name || 'a lake'
       warnings.push({
         level:  'warn',
         code:   'water-beyond-glide',
-        title:  `Beyond gliding distance from land over ${where}`,
-        detail: `Up to ${st.maxFromLandNm} NM from land (at NM ${Math.round(st.atNm)}); about ${st.beyondGlideNm} NM of the route is beyond gliding distance. `
-          + `From ${st.altFt.toLocaleString('en-US')} ft you glide about ${st.glideRangeNm} NM in still air (glide ratio ${st.glideRatio}:1${st.glideAssumed ? ', assumed: set it in the aircraft profile' : ''})`
-          + (st.wind ? `; the planned wind (${String(st.wind.fromDeg).padStart(3, '0')}° at ${st.wind.kts} kt) is included and moves the area you can reach about ${st.driftNm} NM downwind. ` : '. ')
-          + `Reaching land from there needs ${st.neededFt === null ? 'more than a 60 NM glide' : `about ${st.neededFt.toLocaleString('en-US')} ft`}${st.wind ? ' with that wind' : ''}. `
-          + `${st.neededFt !== null && st.neededFt <= (aircraft?.serviceCeilingFt || 12_500) ? `Climb to about ${st.neededFt.toLocaleString('en-US')} ft, route` : 'Route'} closer to the shore, or carry life jackets for everyone on board (required for single-engine aircraft beyond gliding distance from land) and plan for ditching.`,
+        params: {
+          sea: !!st.sea, name: st.name || null, maxFromLandNm: st.maxFromLandNm, atNm: st.atNm, beyondGlideNm: st.beyondGlideNm, altFt: st.altFt,
+          glideRangeNm: st.glideRangeNm, glideRatio: st.glideRatio, glideAssumed: !!st.glideAssumed,
+          windFromDeg: st.wind ? st.wind.fromDeg : null, windKts: st.wind ? st.wind.kts : null, driftNm: st.wind ? st.driftNm : null,
+          neededFt: st.neededFt,
+          climbToFt: st.neededFt !== null && st.neededFt <= (aircraft?.serviceCeilingFt || 12_500) ? st.neededFt : null,
+        },
         legIndex: st.legIndex,
         focusNm: st.atNm,
       })
@@ -306,36 +282,20 @@ export function computeWarnings(
       if (penetrationSeen.has(seenKey)) continue
       penetrationSeen.add(seenKey)
       const level: WarningLevel = setting === 'info' ? 'info' : RED_CATEGORIES.has(category) ? 'danger' : 'warn'
-      const classLabel = /^[A-F]$/.test(band.class)
-        ? (band.type === 'CTR' ? `Class ${band.class} CTR` : `Class ${band.class}`)
-        : band.class === 'R' ? 'Restricted / danger area'
-        : band.class === 'TRA' ? 'TRA'
-        : (band.type || band.class)
       // Equipment the aircraft lacks for this airspace: a hard stop, not a reminder.
       const zone = band.class === 'TMZ' || band.type === 'TMZ' ? 'TMZ' : band.class === 'RMZ' || band.type === 'RMZ' ? 'RMZ' : null
       const controlled = /^[A-D]$/.test(band.class)
       const noXpdr  = aircraft?.transponder === 'none'
       const noRadio = aircraft ? hasVhfRadio(aircraft) === false : false
-      const lacks = zone === 'TMZ' && noXpdr ? 'a transponder'
-        : (zone === 'RMZ' || controlled) && noRadio ? 'a radio'
+      const lacks = zone === 'TMZ' && noXpdr ? 'transponder' as const
+        : (zone === 'RMZ' || controlled) && noRadio ? 'radio' as const
         : null
+      const params = { bandClass: band.class, bandType: band.type, name: band.name, plannedFt: planned, lowerFt: band.lower_ft, upperFt: band.upper_ft }
       if (lacks) {
-        warnings.push({
-          level:  'danger',
-          code:   'airspace-equipment',
-          title:  `${classLabel} ${band.name} needs ${lacks}`,
-          detail: `Planned altitude ${planned.toLocaleString()} ft enters ${band.lower_ft.toLocaleString()}–${band.upper_ft.toLocaleString()} ft. The aircraft profile has no ${lacks === 'a radio' ? 'radio' : 'transponder'}: route around it, or above or below it.`,
-          focusNm: midNm,
-        })
+        warnings.push({ level: 'danger', code: 'airspace-equipment', params: { ...params, lacks }, focusNm: midNm })
         continue
       }
-      warnings.push({
-        level,
-        code:   'airspace-penetration',
-        title:  `${classLabel} penetration — ${band.name}`,
-        detail: `Planned altitude ${planned.toLocaleString()} ft enters ${band.lower_ft.toLocaleString()}–${band.upper_ft.toLocaleString()} ft`,
-        focusNm: midNm,
-      })
+      warnings.push({ level, code: 'airspace-penetration', params, focusNm: midNm })
     }
   }
 
@@ -344,13 +304,7 @@ export function computeWarnings(
     for (const a of routeNotamAreas({ notams, waypoints, airspace, nowMs })) {
       const planned = plannedAltAt(profile, a.alongNm)
       if (planned < a.lowerFt || planned > a.upperFt) continue
-      warnings.push({
-        level:  'danger',
-        code:   'notam-airspace',
-        title:  `${notamTitle(a.notam)} on route`,
-        detail: `About ${Math.round(a.alongNm)} NM along the route, planned ${Math.round(planned).toLocaleString('en-US')} ft. ${notamSummary(a.notam)}`,
-        focusNm: a.alongNm,
-      })
+      warnings.push({ level: 'danger', code: 'notam-airspace', params: { notam: a.notam, alongNm: a.alongNm, plannedFt: planned }, focusNm: a.alongNm })
     }
   }
 
@@ -362,7 +316,6 @@ export function computeWarnings(
     const spans = legSpans(profile.altitudeProfile)
     const legMsa = legMsaList(spans, msaPts, getMsaLookup(msaPts))
     const legName = (i: number) => waypoints[i]?.name || `WP ${i + 1}`
-    const clearance = `terrain + ${margins.terrainClearanceFt.toLocaleString('en-US')} ft within ${margins.abeamNm} NM, obstacles + ${margins.obstacleClearanceFt.toLocaleString('en-US')} ft`
     const below = spans
       .map((span, i) => ({ span, msa: legMsa[i]! }))
       .filter(({ span, msa }) => legBelowMsa(span, profile.totalNm, span.altFt, msa))
@@ -372,8 +325,8 @@ export function computeWarnings(
       warnings.push({
         level:  'danger',
         code:   'below-msa',
-        title:  `Leg ${legName(i)} → ${legName(i + 1)} below Minimum Safe Altitude`,
-        detail: `Planned ${Math.round(span.altFt).toLocaleString('en-US')} ft, minimum safe ${required.toLocaleString('en-US')} ft (${clearance}). Check Virtual Radar.`,
+        params: { fromName: legName(i), toName: legName(i + 1), plannedFt: span.altFt, requiredFt: required,
+                  terrainClearanceFt: margins.terrainClearanceFt, abeamNm: margins.abeamNm, obstacleClearanceFt: margins.obstacleClearanceFt },
         fix:    { kind: 'raise-leg', legIndex: i, altFt: required },
         focusNm: (span.fromNm + span.toNm) / 2,
         legIndex: i,
@@ -384,13 +337,7 @@ export function computeWarnings(
   // ── 2b. Airfield proximity ──────────────────────────────────────────────
   if (aerodromes && waypoints.length >= 2) {
     for (const a of airfieldProximity(profile, waypoints, aerodromes, terrainPts)) {
-      warnings.push({
-        level:  'warn',
-        code:   'airfield-proximity',
-        title:  `Passes close to ${a.label}`,
-        detail: `${a.lateralNm.toFixed(1)} NM from the track at ${Math.round(a.distNm)} NM, planned ${Math.round(a.plannedFt).toLocaleString('en-US')} ft over a field at ${Math.round(a.elevationFt).toLocaleString('en-US')} ft: expect circuit and arriving or departing traffic.`,
-        focusNm: a.distNm,
-      })
+      warnings.push({ level: 'warn', code: 'airfield-proximity', params: { label: a.label, lateralNm: a.lateralNm, distNm: a.distNm, plannedFt: a.plannedFt, elevationFt: a.elevationFt }, focusNm: a.distNm })
     }
   }
 
@@ -400,23 +347,13 @@ export function computeWarnings(
     const hops = computeTripFuelPlans(waypoints, legOverrides, aircraft, legWinds)
     for (const { fromIdx, toIdx, plan } of hops) {
       if (plan.availableFuelL <= 0) continue
-      const hopLabel = hops.length > 1
-        ? ` (${waypoints[fromIdx]?.name || `WP${fromIdx + 1}`} → ${waypoints[toIdx]?.name || `WP${toIdx + 1}`})`
-        : ''
+      const hop = hops.length > 1
+        ? { from: waypoints[fromIdx]?.name || `WP${fromIdx + 1}`, to: waypoints[toIdx]?.name || `WP${toIdx + 1}` }
+        : null
       if (plan.totalMinFuelL > plan.availableFuelL) {
-        warnings.push({
-          level:  'danger',
-          code:   'fuel-insufficient',
-          title:  `Insufficient fuel${hopLabel}`,
-          detail: `Requires ${plan.totalMinFuelL.toFixed(1)} L — available ${plan.availableFuelL.toFixed(1)} L`,
-        })
+        warnings.push({ level: 'danger', code: 'fuel-insufficient', params: { hop, requiredL: plan.totalMinFuelL, availableL: plan.availableFuelL } })
       } else if (plan.totalMinFuelL > plan.availableFuelL * 0.85) {
-        warnings.push({
-          level:  'warn',
-          code:   'fuel-tight',
-          title:  `Tight fuel margin${hopLabel}`,
-          detail: `Requires ${plan.totalMinFuelL.toFixed(1)} L of ${plan.availableFuelL.toFixed(1)} L available`,
-        })
+        warnings.push({ level: 'warn', code: 'fuel-tight', params: { hop, requiredL: plan.totalMinFuelL, availableL: plan.availableFuelL } })
       }
     }
   }
@@ -426,12 +363,7 @@ export function computeWarnings(
   if (aircraft && (aircraft.maxCrosswindKts ?? 0) > 0 && surfaceWinds && aerodromes && waypoints.length >= 2) {
     const points: LandingPoint[] = landingPoints(waypoints).map(p => ({ icao: p.name, role: p.role }))
     for (const x of crosswindExceedances(points, surfaceWinds, thresholdsByIcao(aerodromes), aircraft.maxCrosswindKts!)) {
-      warnings.push({
-        level:  'warn',
-        code:   'crosswind',
-        title:  `Crosswind at ${x.icao} (${x.role})`,
-        detail: `Current wind ${x.windText}: ${x.crosswindKt} kt across runway ${x.runway}, the best runway, above the aircraft's ${x.limitKt} kt maximum demonstrated crosswind. Check the forecast for your arrival time.`,
-      })
+      warnings.push({ level: 'warn', code: 'crosswind', params: { icao: x.icao, role: x.role, windText: x.windText, crosswindKt: x.crosswindKt, runway: x.runway, limitKt: x.limitKt } })
     }
   }
 
@@ -443,20 +375,18 @@ export function computeWarnings(
       icao: p.name, role: p.role, ops: p.role === 'departure' ? ['takeoff'] : p.role === 'destination' ? ['landing'] : ['landing', 'takeoff'],
     }))
     for (const x of runwayShortfalls(aircraft, points, runwaysByIcao(aerodromes), surfaceTempsC)) {
-      const what = x.op === 'takeoff' ? 'take-off' : 'landing'
-      const safety = x.op === 'takeoff' ? PERF_FACTORS.safetyTakeoff : PERF_FACTORS.safetyLanding
-      const rwy = `${x.runway.designator ? `runway ${x.runway.designator}` : 'the longest runway'} (${x.runway.lengthM} m ${isPavedSurface(x.runway.surface) ? 'paved' : (x.runway.surface.toLowerCase() || 'unknown surface')})`
       warnings.push({
         level:  'danger',
         code:   'runway-short',
-        title:  `Runway short for ${what} at ${x.icao} (${x.role})`,
-        detail: `Needs about ${x.requiredM.toLocaleString('en-US')} m: the aircraft's ${what} distance ${x.op === 'takeoff' ? 'over' : 'from'} 50 ft, scaled for elevation${x.tempC != null ? `, ${x.tempC} °C` : ''}, surface and a ${safety} safety factor. Best is ${rwy}. Check the POH for today's mass and conditions.`,
+        params: { op: x.op, icao: x.icao, role: x.role, requiredM: x.requiredM, tempC: x.tempC ?? null,
+                  safety: x.op === 'takeoff' ? PERF_FACTORS.safetyTakeoff : PERF_FACTORS.safetyLanding,
+                  runway: { designator: x.runway.designator || null, lengthM: x.runway.lengthM, surface: x.runway.surface, paved: isPavedSurface(x.runway.surface) } },
       })
     }
   }
 
   // Most serious first (stable within a level, so route order is kept).
   const rank: Record<WarningLevel, number> = { danger: 0, warn: 1, info: 2 }
-  return warnings.sort((a, b) => rank[a.level] - rank[b.level])
+  return warnings.sort((a, b) => rank[a.level] - rank[b.level]).map(formatPreflightWarning)
 }
 
