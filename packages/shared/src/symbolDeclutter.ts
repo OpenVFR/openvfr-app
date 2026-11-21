@@ -91,21 +91,35 @@ export function placeMarks(marks: { id: string; x: number; y: number; r: number 
 
 type PointFeature = Feature<Point, Record<string, unknown>>
 
-const isPoint = (f: Feature): f is PointFeature =>
-  f.geometry?.type === 'Point' && (f.properties as Record<string, unknown> | null)?.['kind'] === 'reporting_point'
+const props = (f: Feature): Record<string, unknown> => (f.properties ?? {}) as Record<string, unknown>
+const isPoint = (f: Feature): f is PointFeature => f.geometry?.type === 'Point'
 
-/** The features with the reporting points moved clear of `blockers` for this view. Other features are returned as they are. A pitched view
- *  (the projection is not flat) and a point outside the screen are left where they are. Positions are restored from `lon0`/`lat0` first, so
- *  calling it again on its own result for another view is safe. */
-export function displaceReportingPoints(fc: FeatureCollection, blockers: Blocker[], v: View): FeatureCollection {
-  if ((v.pitch ?? 0) > 1) return restore(fc)
+/** A club reporting point of the aerodrome-details layer (a VFR reporting point read from a club map or chart): may be moved beside what it collides with. */
+const isClubPoint = (f: Feature): boolean => isPoint(f) && props(f)['kind'] === 'reporting_point'
+/** A VFR reporting point (RP) of the base waypoint layer: may be moved. A MANDATORY reporting point (MRP) and a holding point are never moved: they sit exactly where they are
+ *  and everything else moves away from them. */
+const isBaseVfrPoint = (f: Feature): boolean => isPoint(f) && props(f)['wp_type'] === 'RP' && !String(props(f)['name'] ?? '').toUpperCase().startsWith('HOLDING')
+
+const pointKey = (f: PointFeature): string => `${String(props(f)['aerodrome'] ?? '')}|${String(props(f)['name'] ?? '')}|${props(f)['lon0'] ?? f.geometry.coordinates[0]}|${props(f)['lat0'] ?? f.geometry.coordinates[1]}`
+
+/**
+ * The features with the movable points moved clear of the fixed symbols (`blockers`, and every point of `fc` that is not movable) for this view. Positions are restored from
+ * `lon0`/`lat0` first, so calling it again on its own result for another view is safe. A pitched view (the projection is not flat) and a point outside the screen are left where
+ * they are.
+ */
+function displaceWhere(fc: FeatureCollection, movable: (f: Feature) => boolean, blockers: Blocker[], v: View, fixedRadius: number): FeatureCollection {
   const original = restore(fc)
-  const pts = original.features.filter(isPoint)
+  if ((v.pitch ?? 0) > 1) return original
   const margin = 120
   const onScreen = (x: number, y: number) => x > -margin && y > -margin && x < v.width + margin && y < v.height + margin
-  const bs = blockers.map(b => { const [x, y] = toScreen(b.lon, b.lat, v); return { x, y, r: b.r } }).filter(b => onScreen(b.x, b.y))
+  const fixed: Blocker[] = [...blockers]
+  for (const f of original.features) {
+    if (isPoint(f) && !movable(f) && props(f)['wp_type'] !== undefined) fixed.push({ lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], r: fixedRadius })
+  }
+  const bs = fixed.map(b => { const [x, y] = toScreen(b.lon, b.lat, v); return { x, y, r: b.r } }).filter(b => onScreen(b.x, b.y))
   const rp = reportingRadius(v.zoom)
-  const marks = pts.map(f => { const [x, y] = toScreen(f.geometry.coordinates[0], f.geometry.coordinates[1], v); return { id: pointKey(f), x, y, r: rp, f } })
+  const marks = original.features.filter((f): f is PointFeature => isPoint(f) && movable(f))
+    .map(f => { const [x, y] = toScreen(f.geometry.coordinates[0], f.geometry.coordinates[1], v); return { id: pointKey(f), x, y, r: rp } })
     .filter(m => onScreen(m.x, m.y))
     .sort((a, b) => (a.id < b.id ? -1 : 1))
   const moved = placeMarks(marks, bs)
@@ -114,17 +128,32 @@ export function displaceReportingPoints(fc: FeatureCollection, blockers: Blocker
   return {
     ...original,
     features: original.features.map(f => {
-      if (!isPoint(f)) return f
+      if (!isPoint(f) || !movable(f)) return f
       const m = by.get(pointKey(f)), d = m && moved.get(m.id)
       if (!m || !d) return f
       const [lon, lat] = toLonLat(m.x + d[0], m.y + d[1], v)
       return { ...f, geometry: { type: 'Point', coordinates: [lon, lat] },
-        properties: { ...f.properties, lon0: f.geometry.coordinates[0], lat0: f.geometry.coordinates[1], displaced: true } } as typeof f
+        properties: { ...props(f), lon0: f.geometry.coordinates[0], lat0: f.geometry.coordinates[1], displaced: true } } as typeof f
     }),
   }
 }
 
-const pointKey = (f: PointFeature): string => `${String(f.properties?.['aerodrome'] ?? '')}|${String(f.properties?.['name'] ?? '')}|${f.properties?.['lon0'] ?? f.geometry.coordinates[0]}`
+/** Club reporting points (aerodrome details) moved clear of `blockers` (landmarks, obstacles, the base layer's waypoints: see `waypointBlockers`). */
+export function displaceReportingPoints(fc: FeatureCollection, blockers: Blocker[], v: View): FeatureCollection {
+  return displaceWhere(fc, isClubPoint, blockers, v, reportingRadius(v.zoom))
+}
+
+/** The base waypoint layer: VFR reporting points (RP) moved clear of `blockers`; mandatory reporting points (MRP) and holding points stay exactly where they are and are
+ *  blockers themselves. */
+export function displaceWaypoints(fc: FeatureCollection, blockers: Blocker[], v: View): FeatureCollection {
+  return displaceWhere(fc, isBaseVfrPoint, blockers, v, reportingRadius(v.zoom))
+}
+
+/** Every waypoint of the base layer as a fixed symbol, for the club points to keep clear of (a club point is never put on a mandatory reporting point). */
+export function waypointBlockers(fc: FeatureCollection | null | undefined, zoom: number): Blocker[] {
+  const r = reportingRadius(zoom)
+  return (fc?.features ?? []).filter(isPoint).map(f => ({ lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], r }))
+}
 
 /** Features with every displaced point back at its true position. */
 export function restore(fc: FeatureCollection): FeatureCollection {

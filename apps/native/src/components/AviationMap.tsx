@@ -82,7 +82,8 @@ import { buildDetailsMapData, staticColorLayers, layerFilter, landmarkLabelFilte
 import { useCircuitFocus } from '../utils/circuitFocus'
 import { useRelevantAerodromes } from '../utils/relevantAerodrome'
 import { setCameraView, useCameraView } from '../utils/cameraView'
-import { displaceReportingPoints, landmarkRadius, obstacleRadius, type Blocker } from '@open-vfr/shared/symbolDeclutter'
+import { displaceReportingPoints, displaceWaypoints, landmarkRadius, obstacleRadius, sameDisplacement, waypointBlockers, type Blocker } from '@open-vfr/shared/symbolDeclutter'
+import { setDisplacedWaypoints, useDisplacedWaypoints } from '../utils/displacedWaypoints'
 import { LogManager } from '@maplibre/maplibre-react-native'
 import { createValueStore, useStoreValue, type ValueStore } from '../utils/valueStore'
 import { getNotamCoordinateFocus, subscribeNotamCoordinateFocus, clearNotamCoordinateFocus, type NotamCoordinateFocus } from '@open-vfr/shared/notamCoordinateFocus'
@@ -1165,9 +1166,28 @@ function symbolBlockers(landmarks: GeoJSON.FeatureCollection | null | undefined,
   return out
 }
 
-const AerodromeDetailsLayers = React.memo(function AerodromeDetailsLayers({ data, showCircuits, showHoldings, showWaypoints, landmarks, obstacles, showLandmarks, showObstacles }:
+/** Computes where the base layer's VFR reporting points are drawn (moved beside landmark / obstacle symbols; mandatory ones never) and publishes it. Renders nothing. */
+const WaypointDeclutter = React.memo(function WaypointDeclutter({ waypoints, landmarks, obstacles, showLandmarks, showObstacles }:
+  { waypoints?: GeoJSON.FeatureCollection | null; landmarks?: GeoJSON.FeatureCollection | null; obstacles?: GeoJSON.FeatureCollection | null; showLandmarks: boolean; showObstacles: boolean }) {
+  const cam = useCameraView()
+  const { width, height } = useWindowDimensions()
+  const last = React.useRef<GeoJSON.FeatureCollection | null>(null)
+  React.useEffect(() => {
+    if (!waypoints || !cam) { if (last.current) { last.current = null; setDisplacedWaypoints(null) } return }
+    const d = displaceWaypoints(waypoints as never, symbolBlockers(landmarks, obstacles, showLandmarks, showObstacles, cam), { ...cam, width, height }) as unknown as GeoJSON.FeatureCollection
+    const moved = d.features.some(f => (f.properties as Record<string, unknown> | null)?.['displaced'])
+    if (!moved) { if (last.current) { last.current = null; setDisplacedWaypoints(null) } return }
+    if (last.current && sameDisplacement(last.current as never, d as never)) return
+    last.current = d
+    setDisplacedWaypoints(d)
+  }, [waypoints, cam, width, height, landmarks, obstacles, showLandmarks, showObstacles])
+  return null
+})
+
+const AerodromeDetailsLayers = React.memo(function AerodromeDetailsLayers({ data, showCircuits, showHoldings, showWaypoints, landmarks, obstacles, showLandmarks, showObstacles, waypoints }:
   { data: GeoJSON.FeatureCollection; showCircuits: boolean; showHoldings: boolean; showWaypoints: boolean
-    landmarks?: GeoJSON.FeatureCollection | null; obstacles?: GeoJSON.FeatureCollection | null; showLandmarks: boolean; showObstacles: boolean }) {
+    landmarks?: GeoJSON.FeatureCollection | null; obstacles?: GeoJSON.FeatureCollection | null; showLandmarks: boolean; showObstacles: boolean
+    waypoints?: GeoJSON.FeatureCollection | null }) {
   const focus = useCircuitFocus()
   const relevant = useRelevantAerodromes()
   const cam = useCameraView()
@@ -1176,9 +1196,10 @@ const AerodromeDetailsLayers = React.memo(function AerodromeDetailsLayers({ data
   // The reporting points moved clear of the landmark and obstacle symbols for this camera (labels find room by themselves)
   const shown = React.useMemo(() => {
     if (!cam || !showWaypoints) return data
-    return displaceReportingPoints(data as never, symbolBlockers(landmarks, obstacles, showLandmarks, showObstacles, cam),
+    // club points keep clear of landmarks, obstacles and every base waypoint (a mandatory reporting point is never moved: they move away from it)
+    return displaceReportingPoints(data as never, [...symbolBlockers(landmarks, obstacles, showLandmarks, showObstacles, cam), ...waypointBlockers(waypoints as never, cam.zoom)],
       { ...cam, width, height }) as unknown as GeoJSON.FeatureCollection
-  }, [data, cam, width, height, landmarks, obstacles, showLandmarks, showObstacles, showWaypoints])
+  }, [data, cam, width, height, landmarks, obstacles, showLandmarks, showObstacles, showWaypoints, waypoints])
   return (
     <GeoJSONSource id="aerodrome-details" onPress={() => {}} data={shown}>
       {DETAIL_LAYERS_STATIC.map(l => {
@@ -1238,6 +1259,7 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
   ownAltFt,
 }: any) {
   // A landmark a drawn reporting point of the same name sits on: the point's label names it, the landmark's own is left off (one always stays)
+  const displacedWaypoints = useDisplacedWaypoints()          // VFR reporting points moved beside other symbols (mandatory ones never)
   const relevantForLabels = useRelevantAerodromes()
   const landmarkNamesTaken = React.useMemo(
     () => landmarkNamesTakenByPoints(detailsData, relevantForLabels, !!showVfrWaypoints), [detailsData, relevantForLabels, showVfrWaypoints])
@@ -1688,7 +1710,8 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
 
         {/* ── Aerodrome details (experimental): areas, circuits, holding orbits ── */}
         {detailsData && <AerodromeDetailsLayers data={detailsData} showCircuits={showCircuits} showHoldings={showHoldings} showWaypoints={showVfrWaypoints}
-          landmarks={landmarksData} obstacles={obstaclesData} showLandmarks={!!showLandmarks} showObstacles={!!showObstacles} />}
+          landmarks={landmarksData} obstacles={obstaclesData} showLandmarks={!!showLandmarks} showObstacles={!!showObstacles} waypoints={waypointsData} />}
+        <WaypointDeclutter waypoints={waypointsData} landmarks={landmarksData} obstacles={obstaclesData} showLandmarks={!!showLandmarks} showObstacles={!!showObstacles} />
 
         {/* ── Aerodromes ───────────────────────────────────── */}
         <GeoJSONSource id="ofm-aerodromes" onPress={() => {}} data={aerodromesData}>
@@ -1818,7 +1841,7 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
           </GeoJSONSource>
 
         {/* ── Waypoints (MRP) ──────────────────────────────── */}
-        <GeoJSONSource id="ofm-waypoints" onPress={() => {}} data={waypointsData}>
+        <GeoJSONSource id="ofm-waypoints" onPress={() => {}} data={displacedWaypoints ?? waypointsData}>
             <Layer
               id="waypoints-mrp-circle"
               layout={{

@@ -6,12 +6,14 @@
  * "Traffic circuits" switch and the runway end tapped in the aerodrome popup; orbits follow "Holding points".
  * Added with the runtime API only, below the airspace layers.
  */
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type * as maplibregl from 'maplibre-gl'
 import { DETAIL_LAYERS, landmarkLabelFilter, landmarkNamesTakenByPoints, layerFilter, type CircuitFocus } from '@open-vfr/shared/aerodromeDetailsStyle'
 import { useAerodromeDetailsLayer, useCircuitFocus, useRelevantAerodromes } from '../utils/aerodromeDetails'
 import { OVERLAY_BELOW_LAYERS } from '../styles/map-style'
-import { displaceReportingPoints, landmarkRadius, obstacleRadius, sameDisplacement, type Blocker, type View } from '@open-vfr/shared/symbolDeclutter'
+import { displaceReportingPoints, displaceWaypoints, landmarkRadius, obstacleRadius, sameDisplacement, waypointBlockers, type Blocker, type View } from '@open-vfr/shared/symbolDeclutter'
+import { loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { useActiveCountries } from '../utils/countryData'
 
 const SOURCE = 'aerodrome-details'
 
@@ -37,7 +39,20 @@ export default function AerodromeDetailsLayer({ map, circuitsVisible, holdingsVi
   const shown = useRef<GeoJSON.FeatureCollection | null>(null)     // what the source holds now (reporting points possibly moved clear of other symbols)
   // The reporting points are moved clear of the landmark and obstacle symbols the map draws (not the labels: those find room by themselves):
   // computed for the current view, again when the map stops moving.
-  const declutter = (m: maplibregl.Map, base: GeoJSON.FeatureCollection) => {
+  const { countries } = useActiveCountries()
+  const [waypoints, setWaypoints] = useState<GeoJSON.FeatureCollection | null>(null)       // the base layer's reporting points: the true positions
+  useEffect(() => {
+    let cancelled = false
+    loadCountryGeojson('waypoints', countries).then(d => { if (!cancelled) setWaypoints(d as GeoJSON.FeatureCollection) }).catch(() => { if (!cancelled) setWaypoints(null) })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countries.join(',')])
+  const waypointsRef = useRef<GeoJSON.FeatureCollection | null>(null)
+  waypointsRef.current = waypoints
+  const shownWaypoints = useRef<GeoJSON.FeatureCollection | null>(null)
+
+  /** Landmark and obstacle symbols the map draws now (fixed: the reporting points move clear of them). */
+  const symbolBlockers = (m: maplibregl.Map): Blocker[] => {
     const layers = ['landmarks-icon', 'obstacles-circle'].filter(id => m.getLayer(id) && m.getLayoutProperty(id, 'visibility') !== 'none')
     const z = m.getZoom()
     const blockers: Blocker[] = []
@@ -52,9 +67,23 @@ export default function AerodromeDetailsLayer({ map, circuitsVisible, holdingsVi
         blockers.push({ lon: g.coordinates[0], lat: g.coordinates[1], r: f.layer.id === 'landmarks-icon' ? landmarkRadius(z) : obstacleRadius(z) })
       }
     }
+    return blockers
+  }
+  const viewOf = (m: maplibregl.Map): View => {
     const c = m.getCenter(), box = m.getCanvas()
-    const view: View = { lon: c.lng, lat: c.lat, zoom: z, bearing: m.getBearing(), pitch: m.getPitch(), width: box.clientWidth, height: box.clientHeight }
-    return displaceReportingPoints(base as never, blockers, view) as unknown as GeoJSON.FeatureCollection
+    return { lon: c.lng, lat: c.lat, zoom: m.getZoom(), bearing: m.getBearing(), pitch: m.getPitch(), width: box.clientWidth, height: box.clientHeight }
+  }
+  // Club reporting points keep clear of landmarks, obstacles and EVERY base waypoint (a mandatory reporting point is never moved: they move away from it).
+  const declutter = (m: maplibregl.Map, base: GeoJSON.FeatureCollection) =>
+    displaceReportingPoints(base as never, [...symbolBlockers(m), ...waypointBlockers(waypointsRef.current as never, m.getZoom())], viewOf(m)) as unknown as GeoJSON.FeatureCollection
+  // The base layer's VFR reporting points (RP) are moved clear of landmarks and obstacles; mandatory reporting points (MRP) and holding points stay exactly where they are.
+  const declutterWaypoints = (m: maplibregl.Map) => {
+    const base = waypointsRef.current, src = m.getSource('ofm-waypoints') as maplibregl.GeoJSONSource | undefined
+    if (!base || !src) return
+    const d = displaceWaypoints(base as never, symbolBlockers(m), viewOf(m)) as unknown as GeoJSON.FeatureCollection
+    if (shownWaypoints.current && sameDisplacement(shownWaypoints.current as never, d as never)) return
+    shownWaypoints.current = d
+    src.setData(d)
   }
   const baseRef = useRef<GeoJSON.FeatureCollection | null>(null)
   baseRef.current = fc as GeoJSON.FeatureCollection | null
@@ -86,6 +115,7 @@ export default function AerodromeDetailsLayer({ map, circuitsVisible, holdingsVi
     if (!map) return
     let t: ReturnType<typeof setTimeout> | undefined
     const again = () => {
+      declutterWaypoints(map)
       const base = baseRef.current, src = map.getSource(SOURCE) as maplibregl.GeoJSONSource | undefined
       if (!base || !src || !reportingPointsVisible) return
       const d = declutter(map, base)
@@ -94,11 +124,12 @@ export default function AerodromeDetailsLayer({ map, circuitsVisible, holdingsVi
       src.setData(d)
     }
     const soon = () => { clearTimeout(t); t = setTimeout(again, 250) }
+    soon()
     map.on('moveend', soon)
     map.on('sourcedata', soon)
     return () => { clearTimeout(t); map.off('moveend', soon); map.off('sourcedata', soon) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, reportingPointsVisible])
+  }, [map, reportingPointsVisible, waypoints])
 
   // A landmark a drawn reporting point of the same name sits on: the point's label names it, so the landmark's own label is left off
   // (one of the two always stays, and the point's finds room beside its symbol).

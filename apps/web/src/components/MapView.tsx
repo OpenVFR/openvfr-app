@@ -386,8 +386,16 @@ const noop = () => {}
 const NO_ALERTS: never[] = []
 
 /** Route point for a clicked navaid / reporting point (popup's route action). */
-function pointRouteWp(feat: maplibregl.MapGeoJSONFeature, name: string): RouteWaypoint {
+/** Where a point really is: a reporting point the map moved beside another symbol (symbolDeclutter) keeps its true position in lon0/lat0. A route, a popup
+ *  and "what is here" always use the true one. */
+function truePosition(feat: maplibregl.MapGeoJSONFeature): [number, number] {
   const [lng, lat] = (feat.geometry as { type: 'Point'; coordinates: [number, number] }).coordinates
+  const p = (feat.properties ?? {}) as Record<string, unknown>
+  return typeof p['lon0'] === 'number' && typeof p['lat0'] === 'number' ? [p['lon0'], p['lat0']] : [lng, lat]
+}
+
+function pointRouteWp(feat: maplibregl.MapGeoJSONFeature, name: string): RouteWaypoint {
+  const [lng, lat] = truePosition(feat)
   return { lng, lat, name }
 }
 
@@ -3768,8 +3776,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       for (const feat of phits) {
         const fp = feat.properties as Record<string, unknown>
         const lid = feat.layer.id
-        const fg = feat.geometry as { type: 'Point'; coordinates: [number, number] }
-        const [fLng, fLat] = fg.coordinates
+        const [fLng, fLat] = truePosition(feat)
 
         if (AERODROME_LAYERS.includes(lid)) {
           const key = `ad:${fp.icao}`

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { FeatureCollection, Point } from 'geojson'
-import { displaceReportingPoints, landmarkRadius, placeMarks, reportingRadius, restore, sameDisplacement, toLonLat, toScreen, type View } from './symbolDeclutter'
+import { displaceReportingPoints, displaceWaypoints, landmarkRadius, placeMarks, reportingRadius, restore, sameDisplacement, toLonLat, toScreen, waypointBlockers, type View } from './symbolDeclutter'
 
 const view = (over: Partial<View> = {}): View => ({ lon: 13.02, lat: 55.425, zoom: 16, bearing: 0, width: 800, height: 600, ...over })
 
@@ -73,5 +73,39 @@ describe('displacing reporting points', () => {
     expect(restore(once)).toEqual(fc())
     const elsewhere = displaceReportingPoints(once, [], v)                      // the landmark is gone from the view: the point goes home
     expect(elsewhere).toEqual(fc())
+  })
+})
+
+describe('mandatory reporting points stay put, VFR reporting points make room', () => {
+  const v = view()
+  const wp = (name: string, type: string, dx = 0): never => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [v.lon + dx, v.lat] },
+    properties: { name, wp_type: type, aerodrome: 'ESXX' } }) as never
+  const church = { lon: v.lon, lat: v.lat, r: landmarkRadius(v.zoom) }
+  const fc = (...f: unknown[]): FeatureCollection => ({ type: 'FeatureCollection', features: f as never[] })
+
+  it('a mandatory reporting point on a landmark is not moved, a VFR one is', () => {
+    const out = displaceWaypoints(fc(wp('NORTH', 'MRP'), wp('KVARN', 'RP', 0.00001)), [church], v)
+    expect(out.features[0]).toEqual(fc(wp('NORTH', 'MRP')).features[0])
+    const rp = out.features[1] as unknown as { geometry: Point; properties: Record<string, unknown> }
+    expect(rp.properties['displaced']).toBe(true)
+    const [x, y] = toScreen(rp.geometry.coordinates[0], rp.geometry.coordinates[1], v)
+    expect(Math.hypot(x - 400, y - 300)).toBeGreaterThanOrEqual(reportingRadius(v.zoom) * 2)               // clear of the mandatory point it was on
+  })
+  it('a VFR point on a mandatory point moves away from it even with nothing else near', () => {
+    const out = displaceWaypoints(fc(wp('NORTH', 'MRP'), wp('KVARN', 'RP')), [], v)
+    expect((out.features[0] as unknown as { properties: Record<string, unknown> }).properties['displaced']).toBeUndefined()
+    expect((out.features[1] as unknown as { properties: Record<string, unknown> }).properties['displaced']).toBe(true)
+  })
+  it('holding points are fixed too, and a lone VFR point does not move', () => {
+    const out = displaceWaypoints(fc(wp('HOLDING WEST', 'RP'), wp('KVARN', 'RP', 0.02)), [], v)
+    expect(out).toEqual(fc(wp('HOLDING WEST', 'RP'), wp('KVARN', 'RP', 0.02)))
+    expect(restore(displaceWaypoints(fc(wp('NORTH', 'MRP'), wp('KVARN', 'RP')), [], v))).toEqual(fc(wp('NORTH', 'MRP'), wp('KVARN', 'RP')))
+  })
+  it('a club point keeps clear of every base waypoint, mandatory ones included', () => {
+    const base = fc(wp('NORTH', 'MRP'))
+    const club = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [v.lon, v.lat] },
+      properties: { kind: 'reporting_point', aerodrome: 'ESXX', name: 'Club point' } }] } as FeatureCollection
+    const out = displaceReportingPoints(club, waypointBlockers(base, v.zoom), v)
+    expect((out.features[0].properties as Record<string, unknown>)['displaced']).toBe(true)
   })
 })

@@ -59,6 +59,14 @@ import { useDataFreshness } from '../hooks/useDataFreshness'
 
 import { FOLLOW_RETURN_MS } from '@open-vfr/shared/followZoom'
 // Vertical space the top-left route-edit banner takes; other top banners step below it.
+/** Where a point really is: a reporting point the map drew beside another symbol (symbolDeclutter) keeps its true position in lon0/lat0; a route, a popup and the
+ *  position shown always use the true one. */
+function truePosition(feature: { geometry: GeoJSON.Geometry; properties?: GeoJSON.GeoJsonProperties }): [number, number] {
+  const [lng, lat] = (feature.geometry as Point).coordinates as [number, number]
+  const p = (feature.properties ?? {}) as Record<string, unknown>
+  return typeof p['lon0'] === 'number' && typeof p['lat0'] === 'number' ? [p['lon0'], p['lat0']] : [lng, lat]
+}
+
 const EDIT_BANNER_H = 44
 /** Height of the route hint pill (two lines) plus a gap. */
 const ROUTE_HINT_H = 64
@@ -1129,7 +1137,7 @@ function MapScreenForCountry() {
       // Traffic symbol: drawn above everything else, so it wins over an
       // aerodrome or point it happens to be flying over.
       if (isTrafficFeature(p) && feature.geometry.type === 'Point') {
-        const [lng, lat] = (feature.geometry as Point).coordinates
+        const [lng, lat] = truePosition(feature)
         setFeatureInfo(trafficFeatureInfo(p, [lng, lat]))
         return
       }
@@ -1142,7 +1150,7 @@ function MapScreenForCountry() {
         return
       }
       if (feature.geometry.type === 'Point') {
-        const [lng, lat] = (feature.geometry as Point).coordinates
+        const [lng, lat] = truePosition(feature)
 
         // Navaid (VOR / NDB)
         if (p.kind === 'VOR' || p.kind === 'NDB' || p.navaid_type) {
