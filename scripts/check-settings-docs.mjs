@@ -90,7 +90,8 @@ const cap = (s) => s[0].toUpperCase() + s.slice(1);
 // Units / theme / flying
 expectCell('Theme', 2, cap(nativeVal('theme')), 'default');
 expectCell('UI scale (native)', 2, nativeVal('uiScale').toFixed(1), 'default');
-expectCell('Auto flying mode', 2, cap(nativeVal('autoFlyMode')), 'default');
+// native DEFAULTS takes the shared constant (the next line checks that one against the doc); a literal there is still compared
+if (native.autoFlyMode !== 'AUTO_FLY_DEFAULT') expectCell('Auto flying mode', 2, cap(nativeVal('autoFlyMode')), 'default');
 expectCell('Auto flying mode', 2, cap(constant('packages/shared/src/autoFlyDetect.ts', 'AUTO_FLY_DEFAULT').replace(/['"]/g, '')), 'default (shared)');
 expectCell('Auto zoom', 2, nativeVal('autoZoom') ? 'on' : 'off', 'default');
 expectCell('Auto zoom', 2, webDefault(/useState<boolean>\((true|false)\)/, 'autoZoom') === 'true' ? 'on' : 'off', 'default (web)');

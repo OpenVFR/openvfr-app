@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pprBadge, pprExplain, pprModeOf } from './pprMode'
+import { pprBadge, pprExplain, pprModeOf, pprSentence, pprSuffix } from './pprMode'
 
 describe('pprModeOf', () => {
   it('uses ppr_mode when it is one of the four states', () => {
@@ -26,5 +26,25 @@ describe('badge and explanation', () => {
   it('explains every state', () => {
     expect(pprExplain('conditional')).toMatch(/some cases/)
     expect(pprExplain('always')).toMatch(/required/)
+  })
+})
+
+describe('plain words for lists and the assistant', () => {
+  it('suffix: PPR, PPR in some cases, or nothing (no asterisk in text)', () => {
+    expect(pprSuffix('always')).toBe(', PPR')
+    expect(pprSuffix('conditional', ' · ')).toBe(' · PPR in some cases')
+    expect(pprSuffix('none')).toBe('')
+    expect(pprSuffix(undefined)).toBe('')
+  })
+  it('sentence: every state says something, unknown is not none', () => {
+    expect(pprSentence('unknown')).toMatch(/no information/)
+    expect(pprSentence('none')).toBe('No PPR required.')
+    expect(pprSentence('conditional')).toMatch(/some cases/)
+    expect(pprSentence('always')).toBe('PPR required.')
+    expect(pprSentence(undefined)).toMatch(/no information/)
+  })
+  it('badge and explanation accept missing data', () => {
+    expect(pprBadge(undefined)).toBeNull()
+    expect(pprExplain(undefined)).toMatch(/no information/)
   })
 })

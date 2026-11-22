@@ -32,6 +32,8 @@ interface Props {
 export default function AirfieldBriefPanel({ brief, onOpenFull, onClose }: Props) {
   const { props } = brief
   const freq      = primaryFreq(props)
+  const pprMode   = pprModeOf(props)
+  const pprText   = pprBadge(pprMode)
 
   return (
     <div className={css.panel}>
@@ -59,12 +61,12 @@ export default function AirfieldBriefPanel({ brief, onOpenFull, onClose }: Props
         <div className={css.freqRow}>
           <span className={css.freqLabel}>FREQ</span>
           <span className={css.freq}>{freq}</span>
-          {pprBadge(pprModeOf(props)) && <span className={css.pprBadge} title={pprExplain(pprModeOf(props))}>{pprBadge(pprModeOf(props))}</span>}
+          {pprText && <span className={css.pprBadge} title={pprExplain(pprMode)}>{pprText}</span>}
         </div>
       )}
-      {!freq && pprBadge(pprModeOf(props)) && (
+      {!freq && pprText && (
         <div className={css.freqRow}>
-          <span className={css.pprBadge} title={pprExplain(pprModeOf(props))}>{pprBadge(pprModeOf(props))}</span>
+          <span className={css.pprBadge} title={pprExplain(pprMode)}>{pprText}</span>
         </div>
       )}
 

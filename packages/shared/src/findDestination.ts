@@ -25,10 +25,10 @@ export interface AerodromeEntry {
   type:        string
   /** Each runway's length and surface code (for "paved runway of at least N m"). */
   runways?:    { lengthM: number; surface: string }[]
-  /** Prior permission required (the older yes/no: true only for a flag the data set carries). */
-  ppr?:        boolean
   /** Prior permission in four states (always, conditional, none, unknown): see pprMode. */
-  pprMode?:    PprMode
+  pprMode:     PprMode
+  /** The PPR sentences of the aerodrome (the limits of a conditional PPR). */
+  pprRemarks:  string[]
 }
 
 export interface AerodromeResult extends AerodromeEntry {
@@ -102,8 +102,8 @@ export function parseAerodromesGeoJson(fc: AerodromeFeatureCollectionLike): Aero
       fuel:        parseMaybeJsonArray<string>(p.fuel),
       type:        String(p.type ?? 'AD'),
       runways:     rwyList,
-      ppr:         p.ppr === true,
       pprMode:     pprModeOf(p),
+      pprRemarks:  parseMaybeJsonArray<string>(p.ppr_remarks),
     })
   }
   return entries

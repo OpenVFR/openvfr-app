@@ -26,13 +26,25 @@ export function pprModeOf(p: { ppr?: unknown; ppr_mode?: unknown } | null | unde
 }
 
 /** The short badge text, or null when nothing is to be shown ("PPR" or "PPR*" for conditions). */
-export function pprBadge(mode: PprMode): string | null {
+export function pprBadge(mode: PprMode | undefined): string | null {
   return mode === 'always' ? 'PPR' : mode === 'conditional' ? 'PPR*' : null
 }
 
 /** The sentence behind the badge (tooltip, accessibility label). */
-export function pprExplain(mode: PprMode): string {
+export function pprExplain(mode: PprMode | undefined): string {
   return mode === 'always' ? 'Prior permission required'
     : mode === 'conditional' ? 'Prior permission required in some cases (traffic, hours or season): see the remarks'
     : mode === 'none' ? 'No prior permission required' : 'Prior permission: no information'
+}
+
+/** Plain words for a list line (fuel stops, assistant text): ", PPR", ", PPR in some cases" or nothing. The asterisk of the badge is not used in text. */
+export function pprSuffix(mode: PprMode | undefined, sep = ', '): string {
+  return mode === 'always' ? `${sep}PPR` : mode === 'conditional' ? `${sep}PPR in some cases` : ''
+}
+
+/** One sentence for the assistant: every state says something, so "no information" is never mistaken for "no PPR". */
+export function pprSentence(mode: PprMode | undefined): string {
+  return mode === 'always' ? 'PPR required.'
+    : mode === 'conditional' ? 'PPR required in some cases (traffic, hours or season).'
+    : mode === 'none' ? 'No PPR required.' : 'PPR: no information, check the AIP or call ahead.'
 }

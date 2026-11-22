@@ -4,7 +4,7 @@
  * plan's stops as fuel stops (one edit). Nothing runs until the pilot asks.
  * Native counterpart of web's FuelStopSuggest.tsx.
  */
-import { pprBadge } from '@open-vfr/shared/pprMode'
+import { pprSuffix } from '@open-vfr/shared/pprMode'
 import React, { useEffect, useState } from 'react'
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native'
 import { parseAerodromesGeoJson, type AerodromeEntry } from '@open-vfr/shared/findDestination'
@@ -97,7 +97,7 @@ export function FuelStopSuggest({ waypoints, legOverrides, aircraft, legWinds, o
                     {' · '}{s.aerodrome.maxRunwayM > 0 ? `${s.aerodrome.maxRunwayM} m` : 'runway ?'}
                     {s.aerodrome.surfaces.length > 0 ? ` ${s.aerodrome.surfaces.join('/')}` : ''}
                     {' · '}{s.detourNm < 1 ? 'on track' : `+${s.detourNm.toFixed(0)} NM`}
-                    {pprBadge(s.aerodrome.pprMode ?? 'unknown') ? ` · ${pprBadge(s.aerodrome.pprMode ?? 'unknown')}` : ''}
+                    {pprSuffix(s.aerodrome.pprMode, ' · ')}
                   </Text>
                 </View>
               ))}

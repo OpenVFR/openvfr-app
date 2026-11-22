@@ -342,6 +342,8 @@ export default function AerodromePopup({
 }: Props) {
   const fuelList = p.fuel ?? []
   const hasFuel = fuelList.length > 0
+  const pprMode = pprModeOf(p)
+  const pprText = pprBadge(pprMode)
   const contacts = uniqueContacts(p.contacts ?? [])
   const freqs = p.frequencies ?? []
   const runways = p.runways ?? []
@@ -663,7 +665,7 @@ export default function AerodromePopup({
                   ATC {atc.status === 'open' ? 'Open' : atc.status === 'closed' ? 'Closed' : '?'}
                 </span>
               )}
-              {pprBadge(pprModeOf(p)) && <span className={`${css.badge} ${css.ppr}`} title={pprExplain(pprModeOf(p))}>{pprBadge(pprModeOf(p))}</span>}
+              {pprText && <span className={`${css.badge} ${css.ppr}`} title={pprExplain(pprMode)}>{pprText}</span>}
               {hasFuel &&
                 fuelList.map((f) => (
                   <span key={f} className={`${css.badge} ${css.fuel}`}>

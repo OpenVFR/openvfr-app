@@ -3,7 +3,7 @@
  * fuel-stop search over the loaded aerodromes and lets the pilot add a plan's
  * stops to the route (one undo step). Nothing runs until the pilot asks.
  */
-import { pprBadge, pprExplain } from '@open-vfr/shared/pprMode'
+import { pprBadge, pprExplain, type PprMode } from '@open-vfr/shared/pprMode'
 import { useEffect, useState } from 'react'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { parseAerodromesGeoJson, aerodromeToWaypoint, type AerodromeFeatureCollectionLike } from '@open-vfr/shared/findDestination'
@@ -27,6 +27,11 @@ function fmtTime(mins: number): string {
   const h = Math.floor(mins / 60)
   const m = Math.round(mins % 60)
   return h > 0 ? `${h}h ${m.toString().padStart(2, '0')}` : `${m} min`
+}
+
+function PprTag({ mode }: { mode: PprMode }) {
+  const text = pprBadge(mode)
+  return text ? <span className={css.ppr} title={pprExplain(mode)}> · {text}</span> : null
 }
 
 export default function FuelStopSuggest({ waypoints, legOverrides, aircraft, legWinds, onInsertInRoute, onSetFuelStop }: Props) {
@@ -102,7 +107,7 @@ export default function FuelStopSuggest({ waypoints, legOverrides, aircraft, leg
                       {' · '}{s.aerodrome.maxRunwayM > 0 ? `${s.aerodrome.maxRunwayM} m` : 'runway ?'}
                       {s.aerodrome.surfaces.length > 0 ? ` ${s.aerodrome.surfaces.join('/')}` : ''}
                       {' · '}{s.waypointIndex !== undefined ? 'on your route' : s.detourNm < 1 ? 'on track' : `+${s.detourNm.toFixed(0)} NM`}
-                      {pprBadge(s.aerodrome.pprMode ?? 'unknown') && <span className={css.ppr} title={pprExplain(s.aerodrome.pprMode ?? 'unknown')}> · {pprBadge(s.aerodrome.pprMode ?? 'unknown')}</span>}
+                      <PprTag mode={s.aerodrome.pprMode} />
                     </span>
                   </div>
                 ))}

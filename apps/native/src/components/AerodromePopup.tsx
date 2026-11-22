@@ -12,7 +12,7 @@
  * primitives (View/Text/Svg instead of div/svg/CSS modules) differ.
  */
 
-import { pprBadge, pprModeOf } from '@open-vfr/shared/pprMode'
+import { pprBadge, pprExplain, pprModeOf } from '@open-vfr/shared/pprMode'
 import React, { useEffect, useState } from 'react'
 import { aerodromeFuelLabel } from '@open-vfr/shared/fuelTypes'
 import { formatCallsign } from '@open-vfr/shared/callsignFormat'
@@ -203,6 +203,7 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
   const isHome = !!feature?.icao && settings.homeAirfield.toUpperCase() === feature.icao.toUpperCase()
   // Hooks must be declared before any conditional return (Rules of Hooks)
   const [activeTab, setActiveTab] = useState<'info' | 'wx' | 'notam'>('info')
+  const pprMode = pprModeOf(feature)
   // Which wx tab is displayed -- see AerodromeWxSection.tsx's doc comment.
   // Reset alongside activeTab on every feature change (this modal is
   // reused across selections, not remounted).
@@ -365,9 +366,9 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
                 <Row label="Elevation" value={`${feature.elevation_ft} ft AMSL`} />
               )}
               {feature.type && <Row label="Type" value={feature.type} />}
-              {pprBadge(pprModeOf(feature)) && (
+              {pprBadge(pprMode) && (
                 <View style={styles.badge}>
-                  <Text style={styles.badgeTxt}>{pprModeOf(feature) === 'always' ? 'PPR required' : 'PPR in some cases'}</Text>
+                  <Text style={styles.badgeTxt}>{pprExplain(pprMode)}</Text>
                 </View>
               )}
               {(feature.ppr_remarks ?? []).map((r, i) => (

@@ -5,7 +5,7 @@
  * and the legal minimum height before anything is saved; every route an
  * assistant makes or changes is marked "check before use" in the app.
  */
-import { pprBadge } from '@open-vfr/shared/pprMode'
+import { pprSuffix } from '@open-vfr/shared/pprMode'
 import * as z from 'zod'
 import type { AircraftProfileDocType, RouteDocType } from '@open-vfr/shared/types'
 import { parseAerodromesGeoJson, type AerodromeFeatureCollectionLike } from '@open-vfr/shared/findDestination'
@@ -70,7 +70,7 @@ export function registerRouteTools(c: Ctx): void {
     const review = built.doc.assistantReview
     if (review && review.change !== 'created' && !review.change.includes('fuel stops')) built.doc.assistantReview = { ...review, change: [...review.change, 'fuel stops'] }
     const others = res.plans.slice(1).map(p => p.stops.map(x => x.aerodrome.icao).join('+')).join(', ')
-    return `Added fuel stop${plan.stops.length > 1 ? 's' : ''} ${plan.stops.map(x => `${x.aerodrome.icao} ${quote(x.aerodrome.name, 60)} (${x.fuels.map(f => FUEL_LABELS[f]).join('/') || x.aerodrome.fuel.join('/')}, ${x.aerodrome.maxRunwayM} m${pprBadge(x.aerodrome.pprMode ?? 'unknown') ? `, ${pprBadge(x.aerodrome.pprMode ?? 'unknown')}` : ''})`).join(' and ')}, +${Math.round(plan.extraMins)} min.${others ? ` Other options: ${others}.` : ''} Fuel listings can be out of date: the pilot should call ahead.`
+    return `Added fuel stop${plan.stops.length > 1 ? 's' : ''} ${plan.stops.map(x => `${x.aerodrome.icao} ${quote(x.aerodrome.name, 60)} (${x.fuels.map(f => FUEL_LABELS[f]).join('/') || x.aerodrome.fuel.join('/')}, ${x.aerodrome.maxRunwayM} m${pprSuffix(x.aerodrome.pprMode)})`).join(' and ')}, +${Math.round(plan.extraMins)} min.${others ? ` Other options: ${others}.` : ''} Fuel listings can be out of date: the pilot should call ahead.`
   }
 
   /**
