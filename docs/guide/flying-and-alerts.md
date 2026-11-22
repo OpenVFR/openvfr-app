@@ -38,8 +38,10 @@ While flying mode is on:
   with its time and distance. Tap the next-waypoint value to cycle between
   ETE and ETA. A course correction indicator shows how far you are off the
   planned leg. On native the bar is a gauges strip: GPS altitude or height
-  above ground (tap to switch), barometric altitude on QNH (tap to set the
-  QNH), vertical speed, ground speed, true track, UTC and wind.
+  above ground (tap to switch), barometric altitude on QNH (tap to show the
+  QNH instead), vertical speed, ground speed, true track, UTC (tap for local
+  time) and wind. Which gauges appear depends on your sensors: see
+  [The gauges strip](#the-gauges-strip-native).
 - **Auto zoom:** zooms the map with your speed. Panning pauses it, and the
   map returns to your aircraft after a short countdown. A **Resume** button
   brings it back at once.
@@ -63,6 +65,46 @@ converts it to height above mean sea level (using a geoid model) so
 airspace, terrain and obstacle margins are not too high. On native, if a
 barometer or vario is connected, altitude can come from there. See
 [Simulators and devices](./simulators-and-devices.md).
+
+### The gauges strip (native)
+
+The strip along the bottom of the map in flying mode shows only the gauges
+your setup can supply. GPS is always the base; a barometer or vario adds
+altitude on QNH and vertical speed (the variometer reading).
+
+| Gauge | Label | GPS only | Phone barometer on | BlueFly vario connected |
+|---|---|---|---|---|
+| GPS altitude, or height above ground (tap to switch) | **GPS ALT** / **GPS HGT** | Yes | Yes | Yes |
+| Barometric altitude on QNH (tap to show the QNH in hPa) | **ALT** / **QNH** | No | Yes | Yes |
+| Vertical speed, ft/min, with a sign (the variometer) | **VS fpm** | No | Yes | Yes |
+| Ground speed | **GS** | Yes | Yes | Yes |
+| True track | **TT** | Yes | Yes | Yes |
+| Time, UTC (tap for local time) | **UTC** / **LT** | Yes | Yes | Yes |
+| Wind, with headwind or tailwind and crosswind | **HW** or **TW** and **XW** | Yes | Yes | Yes |
+
+- **Vertical speed has no GPS-only value:** it needs a pressure source, so
+  with GPS alone the **VS fpm** gauge is not shown. The vertical profile and
+  alerts still work from GPS altitude.
+- **Which source wins:** the BlueFly vario, then the phone barometer (if
+  switched on in Settings → Vario), then GPS. See
+  [Simulators and devices](./simulators-and-devices.md).
+- **Source marker on ALT:** a filled dot means the BlueFly, an outline dot
+  the phone sensor. Green means QNH is known (from nearby METARs, field
+  calibration or your own setting). Amber and a **?** after the label mean
+  QNH is only a guess, so treat the altitude with care. A grey dot means a
+  barometric source is enabled but is not delivering data; ALT then shows
+  a dash. A ⚠ in front of **ALT** means the BlueFly battery is very low.
+- **A vario that goes quiet:** if the BlueFly stops sending for a few
+  seconds, OpenVFR stops using it instead of showing a frozen altitude.
+
+What each way of flying shows:
+
+| Mode | Gauges and altitude used |
+|---|---|
+| **GPS** (Fly) on native | The table above. Alerts and the profile use the barometric altitude when a barometer or vario is active, otherwise GPS altitude. |
+| **Built-in simulator** | Ground speed, track, UTC, wind and **GPS ALT** from the simulated position, plus the simulator controls (heading, speed and altitude). Alerts and the profile always use the simulated altitude, never a barometer. Leave the barometer off while you practise: **ALT** and **VS** would show your phone's real, unmoving reading. |
+| **X-Plane / MSFS** (native) | The simulator's position is used like GPS. A barometer or vario that is switched on still takes priority for altitude, so switch them off when flying a simulator. |
+| **Web app** | The instrument bar shows ground speed, true track, **GPS ALT**, wind with headwind or tailwind and crosswind, and the next waypoint. The web app has no barometer, vario, QNH or **VS** gauge. |
 
 ## Auto start and stop
 
