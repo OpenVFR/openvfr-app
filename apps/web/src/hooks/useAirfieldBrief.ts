@@ -84,6 +84,7 @@ export function loadAerodromes(): Promise<FullAerodrome[]> {
           frequencies:  parseJsonArr(p['frequencies']),
           fuel:         parseJsonArr(p['fuel']),
           ppr:          Boolean(p['ppr']),
+          ppr_mode:     typeof p['ppr_mode'] === 'string' ? p['ppr_mode'] : undefined,
           ppr_remarks:  parseJsonArr(p['ppr_remarks']),
           contacts:     parseJsonArr(p['contacts']),
           runways:      parseJsonArr(p['runways']),

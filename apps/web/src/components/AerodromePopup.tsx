@@ -1,3 +1,4 @@
+import { pprBadge, pprExplain, pprModeOf } from '@open-vfr/shared/pprMode'
 import { aerodromeFuelLabel } from '@open-vfr/shared/fuelTypes'
 import { useState, useEffect, useMemo } from 'react'
 import css from './AerodromePopup.module.css'
@@ -124,6 +125,8 @@ export interface AerodromeFeatureProps {
   frequencies: Frequency[]
   fuel: string[]             // e.g. ['AVGAS', 'A1']
   ppr: boolean
+  /** always | conditional | none | unknown (see @open-vfr/shared/pprMode); absent in older data. */
+  ppr_mode?: string
   ppr_remarks: string[]
   contacts: Contact[]
   runways: Runway[]
@@ -660,7 +663,7 @@ export default function AerodromePopup({
                   ATC {atc.status === 'open' ? 'Open' : atc.status === 'closed' ? 'Closed' : '?'}
                 </span>
               )}
-              {p.ppr && <span className={`${css.badge} ${css.ppr}`}>PPR</span>}
+              {pprBadge(pprModeOf(p)) && <span className={`${css.badge} ${css.ppr}`} title={pprExplain(pprModeOf(p))}>{pprBadge(pprModeOf(p))}</span>}
               {hasFuel &&
                 fuelList.map((f) => (
                   <span key={f} className={`${css.badge} ${css.fuel}`}>

@@ -1,3 +1,4 @@
+import { pprBadge, pprExplain, pprModeOf } from '@open-vfr/shared/pprMode'
 import type { BriefAerodrome } from '../hooks/useAirfieldBrief'
 import type { AerodromeFeatureProps } from './AerodromePopup'
 import css from './AirfieldBriefPanel.module.css'
@@ -58,12 +59,12 @@ export default function AirfieldBriefPanel({ brief, onOpenFull, onClose }: Props
         <div className={css.freqRow}>
           <span className={css.freqLabel}>FREQ</span>
           <span className={css.freq}>{freq}</span>
-          {props.ppr && <span className={css.pprBadge}>PPR</span>}
+          {pprBadge(pprModeOf(props)) && <span className={css.pprBadge} title={pprExplain(pprModeOf(props))}>{pprBadge(pprModeOf(props))}</span>}
         </div>
       )}
-      {!freq && props.ppr && (
+      {!freq && pprBadge(pprModeOf(props)) && (
         <div className={css.freqRow}>
-          <span className={css.pprBadge}>PPR</span>
+          <span className={css.pprBadge} title={pprExplain(pprModeOf(props))}>{pprBadge(pprModeOf(props))}</span>
         </div>
       )}
 

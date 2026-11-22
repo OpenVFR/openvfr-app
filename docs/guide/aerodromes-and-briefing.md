@@ -20,7 +20,11 @@ Tap an aerodrome on the map. The card has three tabs.
   ATC or opening hours: check the NOTAM tab. The hint comes from keywords
   in the text and is never a definitive status.
 - Facilities (fuel and so on), **PPR and restrictions**, and contact
-  details.
+  details. A **PPR** badge means prior permission is required for every
+  visitor. **PPR\*** means it is required only in some cases (certain traffic,
+  hours or seasons): read the PPR remarks below it. No badge means nothing is
+  known, not that no permission is needed: check the remarks and the
+  published information.
 - A button to make it your **home airfield**.
 
 **Weather (Wx)**

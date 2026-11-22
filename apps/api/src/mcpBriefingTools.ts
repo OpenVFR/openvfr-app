@@ -3,6 +3,7 @@
  * briefings, aerodrome status, fuel stops, altitudes per leg, points near a
  * place. Read-only; the changing tools are in mcpRouteTools.ts and friends.
  */
+import { pprBadge } from '@open-vfr/shared/pprMode'
 import * as z from 'zod'
 import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
 import { parseAerodromesGeoJson, type AerodromeFeatureCollectionLike } from '@open-vfr/shared/findDestination'
@@ -139,7 +140,7 @@ export function registerBriefingTools(c: Ctx): void {
     lines.push(ad ? `${code} ${quote(ad.name, 80)}, elevation ${ad.elevationFt} ft. ${c.adLink(code)}` : `${code} (not in OpenVFR's aerodrome data).`)
     if (ad) {
       const rwys = (ad.runways ?? []).map(r => `${r.lengthM} m ${r.surface || '?'}`).join(', ')
-      lines.push(`Runways: ${rwys || 'unknown'}. Fuel listed: ${ad.fuel.join(', ') || 'none'}.${ad.ppr ? ' PPR required.' : ''}`)
+      lines.push(`Runways: ${rwys || 'unknown'}. Fuel listed: ${ad.fuel.join(', ') || 'none'}.${ad.pprMode === 'conditional' ? ' PPR in some cases (see the remarks).' : ad.pprMode === 'always' ? ' PPR required.' : ''}`)
     }
     lines.push(`METAR: ${wx?.metar ? quote(wx.metar, 300) : 'not available'}`)
     if (wx?.taf) lines.push(`TAF: ${quote(wx.taf, 600)}`)
@@ -192,7 +193,7 @@ export function registerBriefingTools(c: Ctx): void {
     if (res.status === 'none-found') return text('No aerodrome near the route fits the aircraft\'s fuel and runway limits. Add a stop by hand in the app.')
     const out = res.plans.map((p, i) => `${i + 1}. ` + p.stops.map(s =>
       `${s.aerodrome.icao} ${quote(s.aerodrome.name, 80)} (${s.fuels.map(f => FUEL_LABELS[f]).join('/') || s.aerodrome.fuel.join('/')}` +
-      `${s.fuelRank > 0 ? `, ${preferenceLabel(s.fuelRank)} choice` : ''}, ${s.aerodrome.maxRunwayM} m${s.aerodrome.ppr ? ', PPR' : ''}) ${c.adLink(s.aerodrome.icao)}`).join(' then ') +
+      `${s.fuelRank > 0 ? `, ${preferenceLabel(s.fuelRank)} choice` : ''}, ${s.aerodrome.maxRunwayM} m${pprBadge(s.aerodrome.pprMode ?? 'unknown') ? `, ${pprBadge(s.aerodrome.pprMode ?? 'unknown')}` : ''}) ${c.adLink(s.aerodrome.icao)}`).join(' then ') +
       `; hops ${p.hops.map(h => `${h.from}→${h.to} ${Math.round(h.enrouteMins)} min, ${Math.round(h.landingFuelL)} L left`).join('; ')}; +${Math.round(p.extraMins)} min flying.`)
     return text(`Fuel stop options for ${quote(r.name, 80)} with ${aircraftLabel(ac)}:\n${out.join('\n')}\nFuel listings come from published aerodrome data and can be out of date: check the AIP or call ahead. Add a stop in the app with "Suggest fuel stop".\n${QUOTE_NOTE}`)
   })

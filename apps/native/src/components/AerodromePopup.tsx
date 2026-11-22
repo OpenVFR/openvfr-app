@@ -12,6 +12,7 @@
  * primitives (View/Text/Svg instead of div/svg/CSS modules) differ.
  */
 
+import { pprBadge, pprModeOf } from '@open-vfr/shared/pprMode'
 import React, { useEffect, useState } from 'react'
 import { aerodromeFuelLabel } from '@open-vfr/shared/fuelTypes'
 import { formatCallsign } from '@open-vfr/shared/callsignFormat'
@@ -154,6 +155,8 @@ export interface AerodromeFeatureProps {
   frequencies?: Frequency[]
   fuel?:        string[]
   ppr?:         boolean
+  /** always | conditional | none | unknown (see @open-vfr/shared/pprMode); absent in older data. */
+  ppr_mode?:    string
   ppr_remarks?: string[]
   runways?:     Runway[]
   /** Derived at data-prep time: true if any frequency has service === 'TWR'. */
@@ -362,9 +365,9 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
                 <Row label="Elevation" value={`${feature.elevation_ft} ft AMSL`} />
               )}
               {feature.type && <Row label="Type" value={feature.type} />}
-              {feature.ppr && (
+              {pprBadge(pprModeOf(feature)) && (
                 <View style={styles.badge}>
-                  <Text style={styles.badgeTxt}>PPR required</Text>
+                  <Text style={styles.badgeTxt}>{pprModeOf(feature) === 'always' ? 'PPR required' : 'PPR in some cases'}</Text>
                 </View>
               )}
               {(feature.ppr_remarks ?? []).map((r, i) => (

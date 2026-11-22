@@ -7,6 +7,7 @@
  * runway length, and (when airborne with a known glide ratio) glide range.
  */
 
+import { pprModeOf, type PprMode } from './pprMode'
 import type { AircraftProfileDocType, FuelCode } from './types'
 import { sellsAnyFuel } from './fuelTypes'
 import { distanceNm, bearingDeg, type RouteWaypoint } from './routeCalc'
@@ -24,8 +25,10 @@ export interface AerodromeEntry {
   type:        string
   /** Each runway's length and surface code (for "paved runway of at least N m"). */
   runways?:    { lengthM: number; surface: string }[]
-  /** Prior permission required. */
+  /** Prior permission required (the older yes/no: true only for a flag the data set carries). */
   ppr?:        boolean
+  /** Prior permission in four states (always, conditional, none, unknown): see pprMode. */
+  pprMode?:    PprMode
 }
 
 export interface AerodromeResult extends AerodromeEntry {
@@ -100,6 +103,7 @@ export function parseAerodromesGeoJson(fc: AerodromeFeatureCollectionLike): Aero
       type:        String(p.type ?? 'AD'),
       runways:     rwyList,
       ppr:         p.ppr === true,
+      pprMode:     pprModeOf(p),
     })
   }
   return entries

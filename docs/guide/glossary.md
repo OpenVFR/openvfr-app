@@ -25,7 +25,7 @@ sidebar:
 | **MVFR / IFR / LIFR** | Flight categories by ceiling and visibility. |
 | **NOTAM** | Notice to airmen. |
 | **POH** | Pilot's operating handbook. |
-| **PPR** | Prior permission required. |
+| **PPR** | Prior permission required. **PPR\*** on an aerodrome: required only in some cases (traffic, hours or season). |
 | **QNH** | Pressure setting that makes the altimeter read altitude above sea level. |
 | **TOC / TOD** | Top of climb / top of descent. |
 | **UTC** | Coordinated universal time. Times are shown in UTC unless a setting says local. |

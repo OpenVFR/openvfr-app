@@ -3,6 +3,7 @@
  * fuel-stop search over the loaded aerodromes and lets the pilot add a plan's
  * stops to the route (one undo step). Nothing runs until the pilot asks.
  */
+import { pprBadge, pprExplain } from '@open-vfr/shared/pprMode'
 import { useEffect, useState } from 'react'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { parseAerodromesGeoJson, aerodromeToWaypoint, type AerodromeFeatureCollectionLike } from '@open-vfr/shared/findDestination'
@@ -101,7 +102,7 @@ export default function FuelStopSuggest({ waypoints, legOverrides, aircraft, leg
                       {' · '}{s.aerodrome.maxRunwayM > 0 ? `${s.aerodrome.maxRunwayM} m` : 'runway ?'}
                       {s.aerodrome.surfaces.length > 0 ? ` ${s.aerodrome.surfaces.join('/')}` : ''}
                       {' · '}{s.waypointIndex !== undefined ? 'on your route' : s.detourNm < 1 ? 'on track' : `+${s.detourNm.toFixed(0)} NM`}
-                      {s.aerodrome.ppr && <span className={css.ppr}> · PPR</span>}
+                      {pprBadge(s.aerodrome.pprMode ?? 'unknown') && <span className={css.ppr} title={pprExplain(s.aerodrome.pprMode ?? 'unknown')}> · {pprBadge(s.aerodrome.pprMode ?? 'unknown')}</span>}
                     </span>
                   </div>
                 ))}
