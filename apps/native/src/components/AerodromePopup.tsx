@@ -294,7 +294,7 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
             {atc && (
               <View style={[styles.atcBadge, { borderColor: atcColor }]}>
                 <Text style={[styles.atcBadgeTxt, { color: atcColor }]}>
-                  ATC {atc.status === 'open' ? 'Open' : atc.status === 'closed' ? 'Closed' : '?'}
+                  ATC {atc.status === 'open' ? 'Open' : atc.status === 'closed' ? 'Closed' : 'hours?'}
                 </Text>
               </View>
             )}

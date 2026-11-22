@@ -40,12 +40,20 @@
   flex-wrap: wrap;
 }
 
+/* the row of status badges (ATC, PPR, fuels ...): spaced like the rest of the header, wrapping on a narrow card */
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
 .badge {
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.05em;
   border-radius: 4px;
-  padding: 1px 6px;
+  padding: 2px 8px;
   background: var(--surface-active);
   color: var(--text-secondary);
 }
@@ -83,7 +91,7 @@
 .notamHint {
   font-size: 10px;
   color: var(--status-warn);
-  margin-top: 2px;
+  margin-top: 6px;
 }
 
 .closureBanner {

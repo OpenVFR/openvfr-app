@@ -660,9 +660,9 @@ export default function AerodromePopup({
               {atc && (
                 <span
                   className={`${css.badge} ${css[atc.status === 'open' ? 'atcOpen' : atc.status === 'closed' ? 'atcClosed' : 'atcUnknown']}`}
-                  title={atc.status === 'unknown' ? 'No usable schedule data' : 'Based on published AIP hours (UTC)'}
+                  title={atc.status === 'unknown' ? 'The published ATC hours could not be read as a schedule: check the AIP or the NOTAMs' : 'Based on published AIP hours (UTC)'}
                 >
-                  ATC {atc.status === 'open' ? 'Open' : atc.status === 'closed' ? 'Closed' : '?'}
+                  ATC {atc.status === 'open' ? 'Open' : atc.status === 'closed' ? 'Closed' : 'hours?'}
                 </span>
               )}
               {pprText && <span className={`${css.badge} ${css.ppr}`} title={pprExplain(pprMode)}>{pprText}</span>}

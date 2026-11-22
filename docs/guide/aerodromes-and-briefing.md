@@ -19,6 +19,9 @@ Tap an aerodrome on the map. The card has three tabs.
   the published schedule. A hint appears if an active NOTAM might affect
   ATC or opening hours: check the NOTAM tab. The hint comes from keywords
   in the text and is never a definitive status.
+  **ATC hours?** means the aerodrome has a tower or information
+  service, but its published hours could not be read as a schedule: check
+  the AIP.
 - Facilities (fuel and so on), **PPR and restrictions**, and contact
   details. A **PPR** badge means prior permission is required for every
   visitor. **PPR\*** means it is required only in some cases (certain traffic,
