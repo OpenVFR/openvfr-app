@@ -104,7 +104,8 @@ existing waypoint.
 ## Direct to
 
 While flying, **Direct to** replaces the route with a two-point route from
-your position to the aerodrome you choose.
+your position to the aerodrome you choose. Tap anywhere on a row to fly
+direct to it.
 
 - Your **home airfield** is always listed first.
 - If the aircraft has glide data, aerodromes within glide range are

@@ -6,8 +6,9 @@
  * with the web panel.
  *
  * Filters: free-text search (ICAO / name), fuel type, surface, minimum
- * runway length. Row tap → pan map to aerodrome (onFlyTo). "+" button →
- * append aerodrome as a route waypoint (onAddToRoute).
+ * runway length. Row tap → pan map to aerodrome (onFlyTo); in flight
+ * (directTo) the row tap is Direct To. "+" button → append aerodrome as a
+ * route waypoint (onAddToRoute).
  */
 
 import { FUEL_TAGS, sellsAnyFuel } from '@open-vfr/shared/fuelTypes'
@@ -164,7 +165,8 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
     <View style={[styles.row, a.icao === homeIcao && styles.rowHome, a.withinGlide && styles.rowGlide]}>
       <TouchableOpacity
         style={styles.rowMain}
-        onPress={() => { onFlyTo(a.lat, a.lng); setOpen(false) }}
+        // In flight the whole row is the action (the small button at the edge is hard to hit); on the ground it shows the place.
+        onPress={() => { if (directTo) onAddToRoute(aerodromeToWaypoint(a), true); else { onFlyTo(a.lat, a.lng); setOpen(false) } }}
       >
         <View style={styles.rowTop}>
           <Text style={styles.rowIcao}>{a.icao}</Text>
@@ -298,7 +300,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
                 <View style={styles.row}>
                   <TouchableOpacity
                     style={styles.rowMain}
-                    onPress={() => { onFlyTo(goTo.lat, goTo.lng); setOpen(false) }}
+                    onPress={() => { if (directTo) onAddToRoute({ lat: goTo.lat, lng: goTo.lng }); else { onFlyTo(goTo.lat, goTo.lng); setOpen(false) } }}
                   >
                     <View style={styles.rowTop}>
                       <Text style={styles.rowIcao}>Go to</Text>
@@ -330,7 +332,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
               {placeMatches.map(p => (
                 <React.Fragment key={p.id}>
                 <View style={styles.row}>
-                  <TouchableOpacity style={styles.rowMain} onPress={() => { onFlyTo(p.lat, p.lng); setOpen(false) }}>
+                  <TouchableOpacity style={styles.rowMain} onPress={() => { if (directTo) onAddToRoute({ lat: p.lat, lng: p.lng, name: p.name }); else { onFlyTo(p.lat, p.lng); setOpen(false) } }}>
                     <View style={styles.rowTop}>
                       <AppIcon name="bookmarkFilled" size={13} color={theme.accentYellow} />
                       <Text style={styles.rowName} numberOfLines={1}>{p.name}</Text>
