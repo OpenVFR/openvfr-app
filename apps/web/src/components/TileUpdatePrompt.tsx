@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { startTileManifestPolling, onTileManifestChanged } from '@open-vfr/shared/tileManifest'
+import { startTileManifestPolling, onTileManifestChanged, hasRelevantChange } from '@open-vfr/shared/tileManifest'
+import { getActiveCountries } from '@open-vfr/shared/countryData'
 import { TILES_BASE_URL } from '../utils/env'
 import css from './UpdatePrompt.module.css'
 import { IconX } from '@tabler/icons-react'
@@ -27,7 +28,10 @@ export default function TileUpdatePrompt() {
   useEffect(() => {
     const stopPolling = startTileManifestPolling(TILES_BASE_URL)
     // `versioned` (first manifest after a slow start) is no data change: the dataset caches reload silently.
-    const unsubscribe = onTileManifestChanged((reason) => { if (reason === 'update') setAvailable(true) })
+    const unsubscribe = onTileManifestChanged((reason, changed) => {
+      // Only files of the selected countries (or shared ones) count: another country's update is none of this user's business.
+      if (reason === 'update' && hasRelevantChange(changed, getActiveCountries())) setAvailable(true)
+    })
     return () => {
       stopPolling()
       unsubscribe()

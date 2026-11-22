@@ -103,7 +103,8 @@ const state = {
  * prompt must ignore it).
  */
 export type TileManifestChangeReason = 'update' | 'versioned'
-type ManifestChangeListener = (reason: TileManifestChangeReason) => void
+/** `changed` = names of the files added, removed or re-hashed (empty for `versioned`). */
+type ManifestChangeListener = (reason: TileManifestChangeReason, changed: string[]) => void
 const changeListeners = new Set<ManifestChangeListener>()
 
 /** A usable manifest from untrusted JSON (network or storage): only entries with a 64-hex sha256 are kept. */
@@ -178,12 +179,47 @@ async function adoptStoredIfNone(tilesBaseUrl: string): Promise<void> {
   if (stored && !state.manifest) adoptManifest(stored, true)
 }
 
-/** The one "did the content change" rule: any file added, removed or with another hash. */
-function filesDiffer(a: TileManifest, b: TileManifest): boolean {
+/** The one "did the content change" rule: names of files added, removed or with another hash. */
+function changedFiles(a: TileManifest, b: TileManifest): string[] {
   const an = a.files ?? {}, bn = b.files ?? {}
   const names = new Set([...Object.keys(an), ...Object.keys(bn)])
-  for (const n of names) if (an[n]?.sha256 !== bn[n]?.sha256) return true
-  return false
+  return [...names].filter(n => an[n]?.sha256 !== bn[n]?.sha256).sort()
+}
+
+const COUNTRY_FILE = /^([a-z]{2})-/
+
+/**
+ * Whether a published file matters to someone using these countries: a country file (`se-...`) only for its own
+ * country, everything else (shared overview, fonts, ...) always. Decides what is worth telling the user about;
+ * the manifest itself stays global.
+ */
+export function isFileRelevantTo(name: string, countries: readonly string[]): boolean {
+  const m = COUNTRY_FILE.exec(name)
+  return !m || countries.some(c => c.toLowerCase() === m[1])
+}
+
+/** True when any of the changed files is relevant to the given countries (see isFileRelevantTo). */
+export function hasRelevantChange(changed: readonly string[], countries: readonly string[]): boolean {
+  return changed.some(n => isFileRelevantTo(n, countries))
+}
+
+/**
+ * Files whose hash in `seen` (name -> sha256) differs from the manifest. Names in only one of them are ignored:
+ * a newly published file or country must not raise an "updated" banner (use mergeNewFiles to give it a baseline).
+ */
+export function changedSince(seen: Record<string, string>, manifest: TileManifest): string[] {
+  const files = manifest.files ?? {}
+  return Object.keys(files).filter(n => n in seen && seen[n] !== files[n].sha256).sort()
+}
+
+/** `seen` plus the manifest's files it does not know yet, at their current hash, so later changes to them count. */
+export function mergeNewFiles(seen: Record<string, string>, manifest: TileManifest): Record<string, string> {
+  return { ...hashSnapshot(manifest), ...seen }
+}
+
+/** name -> sha256 of every file in a manifest. */
+export function hashSnapshot(manifest: TileManifest): Record<string, string> {
+  return Object.fromEntries(Object.entries(manifest.files ?? {}).map(([n, f]) => [n, f.sha256]))
 }
 
 /** Makes `data` the manifest in use; the only place that notifies listeners. */
@@ -192,15 +228,16 @@ function adoptManifest(data: TileManifest, fromStorage: boolean): void {
   state.manifest = data
   state.fromStorage = fromStorage
   if (prev === null) {
-    if (state.unversionedIssued) { state.unversionedIssued = false; notifyListeners('versioned') }
-  } else if (filesDiffer(prev, data)) {
-    notifyListeners('update')
+    if (state.unversionedIssued) { state.unversionedIssued = false; notifyListeners('versioned', []) }
+  } else {
+    const changed = changedFiles(prev, data)
+    if (changed.length) notifyListeners('update', changed)
   }
 }
 
-function notifyListeners(reason: TileManifestChangeReason): void {
+function notifyListeners(reason: TileManifestChangeReason, changed: string[]): void {
   changeListeners.forEach((listener) => {
-    try { listener(reason) } catch (err) { console.warn('[tileManifest] change listener failed:', err) }
+    try { listener(reason, changed) } catch (err) { console.warn('[tileManifest] change listener failed:', err) }
   })
 }
 

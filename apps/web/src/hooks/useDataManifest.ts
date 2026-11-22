@@ -4,13 +4,31 @@ import {
   loadTileManifest,
   refreshTileManifest,
   getCachedTileManifest,
+  hasRelevantChange, changedSince, hashSnapshot, mergeNewFiles, isFileRelevantTo,
   type TileManifest,
   type TileManifestDataset,
   type TileManifestFileEntry,
 } from '@open-vfr/shared/tileManifest'
+import { getActiveCountries, onActiveCountriesChange } from '@open-vfr/shared/countryData'
 import { findOutdatedAirac, currentAiracCycle } from '@open-vfr/shared/airac'
 
 const LS_KEY = 'ovfr:manifest:seen_at'
+// name -> sha256 of every file when the user last saw (or first loaded) the data. The banner compares file hashes
+// of the SELECTED countries (and shared files) against it, so another country's update does not trigger it.
+const LS_HASHES_KEY = 'ovfr:manifest:seen_hashes'
+
+function readSeenHashes(): Record<string, string> | null {
+  try {
+    const v = localStorage.getItem(LS_HASHES_KEY)
+    const o = v ? JSON.parse(v) : null
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return null
+    return Object.values(o).every(x => typeof x === 'string') ? o as Record<string, string> : null
+  } catch { return null }
+}
+
+function writeSeenHashes(hashes: Record<string, string>): void {
+  localStorage.setItem(LS_HASHES_KEY, JSON.stringify(hashes))
+}
 
 // Re-exported for existing consumers of this hook's types -- the manifest
 // itself is now fetched/cached by @open-vfr/shared/tileManifest (shared
@@ -65,16 +83,30 @@ export function useDataManifest(): UseDataManifestResult {
       // First visit — no previous seen value. Silently mark as seen so the
       // banner only appears when data is updated after the user's first load.
       localStorage.setItem(LS_KEY, data.generated_at)
+      writeSeenHashes(hashSnapshot(data))
       seenRef.current = data.generated_at
-    } else if (new Date(data.generated_at).getTime() > new Date(seen).getTime()) {
-      // Strictly-newer, not just not-equal -- manifest.json is served with
-      // Cache-Control: no-cache but that only forces revalidation, it does
-      // not guarantee a client always sees the globally-latest edge copy
-      // (propagation race across Cloudflare PoPs). A stale/out-of-order
-      // fetch that's OLDER than what's already marked seen must not flip
-      // the banner on -- only a genuinely newer generated_at should.
-      setHasUpdate(true)
+      return
     }
+    // Strictly-newer, not just not-equal -- manifest.json is served with
+    // Cache-Control: no-cache but that only forces revalidation, it does
+    // not guarantee a client always sees the globally-latest edge copy
+    // (propagation race across Cloudflare PoPs). A stale/out-of-order
+    // fetch that's OLDER than what's already marked seen must not flip
+    // the banner on -- only a genuinely newer generated_at should.
+    const newer = new Date(data.generated_at).getTime() > new Date(seen).getTime()
+    const hashes = readSeenHashes()
+    if (!hashes) {
+      // Seen before per-file tracking existed: the global timestamp rule decides until the banner is dismissed
+      // (markSeen then writes the snapshot); with nothing new, the snapshot is seeded right away.
+      if (newer) setHasUpdate(true)
+      else writeSeenHashes(hashSnapshot(data))
+      return
+    }
+    if (!newer) { setHasUpdate(false); return }
+    // Only a file of the selected countries (or a shared one) that differs from the snapshot counts. Files the
+    // snapshot lacks (a country published later) get their current hash as baseline instead of being ignored forever.
+    writeSeenHashes(mergeNewFiles(hashes, data))
+    setHasUpdate(hasRelevantChange(changedSince(hashes, data), getActiveCountries()))
   }
 
   useEffect(() => {
@@ -87,12 +119,28 @@ export function useDataManifest(): UseDataManifestResult {
     loadTileManifest(TILES_BASE_URL).then(() => {
       applyManifest(getCachedTileManifest(), seen)
     })
+    // Selecting other countries changes which files count. A newly selected country's data is loaded fresh, so
+    // what changed there before the switch is no news: its snapshot entries are reset to the current hashes.
+    let prevCountries = getActiveCountries()
+    return onActiveCountriesChange((countries) => {
+      const added = countries.filter(c => !prevCountries.includes(c))
+      prevCountries = countries
+      const data = getCachedTileManifest()
+      const hashes = readSeenHashes()
+      if (data && hashes && added.length) {
+        const current = hashSnapshot(data)
+        for (const n of Object.keys(current)) if (isFileRelevantTo(n, added) && /^[a-z]{2}-/.test(n)) hashes[n] = current[n]
+        writeSeenHashes(hashes)
+      }
+      applyManifest(data, seenRef.current)
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const markSeen = () => {
     if (!manifest) return
     localStorage.setItem(LS_KEY, manifest.generated_at)
+    localStorage.setItem(LS_HASHES_KEY, JSON.stringify(hashSnapshot(manifest)))
     seenRef.current = manifest.generated_at
     setHasUpdate(false)
   }

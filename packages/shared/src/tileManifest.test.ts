@@ -114,7 +114,7 @@ describe('change listeners and the unversioned fallback', () => {
     f.respond(manifest('ab'))
     await vi.advanceTimersByTimeAsync(0)
     expect(seen).toHaveBeenCalledTimes(1)
-    expect(seen).toHaveBeenCalledWith('versioned')
+    expect(seen).toHaveBeenCalledWith('versioned', [])
   })
 
   it('do not fire on a normal start where every caller got the manifest', async () => {
@@ -175,7 +175,7 @@ describe('stored manifest (offline start)', () => {
     expect(mod.versionedTileUrl(BASE, 'se-airspace.geojson')).toBe(`${BASE}/se-airspace.geojson?v=${'cd'.repeat(6)}`)
     expect(mod.isTileManifestFromStorage()).toBe(false)
     expect(seen).toHaveBeenCalledTimes(1)
-    expect(seen).toHaveBeenCalledWith('update')
+    expect(seen).toHaveBeenCalledWith('update', expect.any(Array))
   })
 
   it('ignores a stored manifest of another tile host', async () => {
@@ -226,7 +226,7 @@ describe('robustness', () => {
     expect(seen).not.toHaveBeenCalled()
     f = deferredFetch(); vi.stubGlobal('fetch', f.fetchMock)
     p = mod.refreshTileManifest(BASE); f.respond(manifest('cd')); await p
-    expect(seen).toHaveBeenCalledWith('update')
+    expect(seen).toHaveBeenCalledWith('update', expect.any(Array))
   })
 
   it('shares one wait (and one storage read) between concurrent callers, and uses a stored copy after the short grace', async () => {
@@ -264,5 +264,29 @@ describe('manifestFilesOfCountry', () => {
     expect(mod.manifestFilesOfCountry('SE')).toEqual(['se-aerodromes.geojson', 'se-airspace.geojson'])
     expect(mod.manifestFilesOfCountry('dk')).toEqual(['dk-aerodromes.geojson'])
     expect(mod.manifestFilesOfCountry('no')).toEqual([])
+  })
+})
+
+describe('country relevance of changes', () => {
+  it('counts shared files and selected countries only', () => {
+    expect(mod.isFileRelevantTo('se-airspace.geojson', ['dk'])).toBe(false)
+    expect(mod.isFileRelevantTo('dk-airspace.geojson', ['dk'])).toBe(true)
+    expect(mod.isFileRelevantTo('europe-overview.pmtiles', ['dk'])).toBe(true)
+    expect(mod.hasRelevantChange(['se-a.geojson', 'se-b.geojson'], ['dk'])).toBe(false)
+    expect(mod.hasRelevantChange(['se-a.geojson', 'no-b.geojson'], ['dk', 'no'])).toBe(true)
+  })
+
+  it('changedSince only looks at files known before', () => {
+    const h = 'ab'.repeat(32), h2 = 'cd'.repeat(32)
+    const m = { generated_at: 'x', files: { 'se-a': { sha256: h2, bytes: 1 }, 'dk-a': { sha256: h, bytes: 1 }, 'dk-new': { sha256: h, bytes: 1 } } } as never
+    expect(mod.changedSince({ 'se-a': h, 'dk-a': h }, m)).toEqual(['se-a'])
+  })
+})
+
+describe('mergeNewFiles', () => {
+  it('adds unknown files at current hash and keeps known ones', () => {
+    const h = 'ab'.repeat(32), h2 = 'cd'.repeat(32)
+    const m = { generated_at: 'x', files: { 'se-a': { sha256: h2, bytes: 1 }, 'dk-a': { sha256: h2, bytes: 1 } } } as never
+    expect(mod.mergeNewFiles({ 'se-a': h }, m)).toEqual({ 'se-a': h, 'dk-a': h2 })
   })
 })

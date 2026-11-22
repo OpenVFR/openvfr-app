@@ -14,7 +14,7 @@ import { refreshTileManifest } from '@open-vfr/shared/tileManifest'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import {
   getCacheStatus, getTotalCacheSizeMb, downloadSelected, clearCache,
-  REQUIRED_ASSETS, OPTIONAL_ASSETS, defaultOptionalSelection, remoteSizeMb, isCached,
+  REQUIRED_ASSETS, OPTIONAL_ASSETS, defaultOptionalSelection, remoteSizeMb, isCached, getStaleCriticalAssets,
   type DownloadProgress,
 } from '../utils/offlineCache'
 import { clearProtomapsStyleCache } from '../components/AviationMap'
@@ -28,8 +28,7 @@ export function useOfflineSummary(): { value: string; outdated: boolean } {
     refreshTileManifest(TILE_BASE).then(() => setTick(t => t + 1))
   }, []))
   const statuses = getCacheStatus()
-  const requiredKeys = new Set(REQUIRED_ASSETS.map(a => a.key))
-  const outdated = statuses.some(x => x.cached && x.stale && requiredKeys.has(x.key))
+  const outdated = getStaleCriticalAssets().length > 0
   const any = statuses.some(x => x.cached)
   return { value: any ? `${getTotalCacheSizeMb()} MB` : 'None', outdated }
 }
@@ -86,8 +85,7 @@ function OfflineDataBody() {
 
   const allCached = statuses.length > 0 && statuses.every(s => s.cached)
   const anyCached = statuses.some(s => s.cached)
-  const requiredKeys = new Set(REQUIRED_ASSETS.map(a => a.key))
-  const anyRequiredStale = statuses.some(s => s.cached && s.stale && requiredKeys.has(s.key))
+  const anyCriticalStale = getStaleCriticalAssets().length > 0
   // Required data is in place but the elevation model is not: offline flight
   // then has no terrain/MSA and AGL limits are unchecked against the ground.
   // That is a safety trade-off worth saying out loud, not a cosmetic one.
@@ -123,7 +121,7 @@ function OfflineDataBody() {
         <Text style={styles.infoValue}>{anyCached ? `${totalMb} MB` : 'None'}</Text>
       </View>
 
-      {anyRequiredStale && (
+      {anyCriticalStale && (
         <View style={styles.warningBox}>
           <Text style={styles.warningTitle}>⚠️ Offline data outdated</Text>
           <Text style={styles.warningText}>

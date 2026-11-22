@@ -151,6 +151,12 @@ export function defaultOptionalSelection(): Set<string> {
 export const REQUIRED_ASSETS: OfflineAsset[] = OFFLINE_ASSETS.filter(a => a.required)
 export const OPTIONAL_ASSETS: OfflineAsset[] = OFFLINE_ASSETS.filter(a => !a.required && !a.bundledWith)
 
+/** Assets whose outdated copy must raise the "offline data outdated" warning: the required ones plus whatever
+ *  travels with one (aerodrome details: circuits, noise areas, holdings). Optional layers (basemap, terrain,
+ *  contours) only get their own per-row badge: a cosmetic update is no reason to warn before a flight. */
+export const CRITICAL_ASSETS: OfflineAsset[] = OFFLINE_ASSETS.filter(a =>
+  a.required || (!!a.bundledWith && !!OFFLINE_ASSETS.find(x => x.key === a.bundledWith)?.required))
+
 /** True once every required (flight-safety-critical) asset is cached — the
  *  minimum bar for "Offline mode" to be considered usable. Optional/cosmetic
  *  assets (basemap, landuse, hillshade) are not part of this check. */
@@ -432,11 +438,10 @@ export function isStale(asset: OfflineAsset): boolean {
   return localHash !== serverHash
 }
 
-/** Any required (flight-safety-critical) offline asset whose cached content
- *  is behind the current server manifest. Empty array = fully up to date
- *  (or manifest/sidecar unavailable to compare -- see isStale doc comment). */
-export function getStaleRequiredAssets(): OfflineAsset[] {
-  return REQUIRED_ASSETS.filter(a => isCached(a) && isStale(a))
+/** Any critical offline asset (see CRITICAL_ASSETS) whose cached content is behind the current server manifest.
+ *  Empty array = fully up to date (or manifest/sidecar unavailable to compare -- see isStale doc comment). */
+export function getStaleCriticalAssets(): OfflineAsset[] {
+  return CRITICAL_ASSETS.filter(a => isCached(a) && isStale(a))
 }
 
 export function clearCache(): void {
