@@ -26,7 +26,7 @@ import { NativeSheet, useSheetMaxHeight } from './NativeSheet'
 import { ClearableTextInput } from './ClearableTextInput'
 import {
   parseAerodromesGeoJson, filterAndSortAerodromes, computeGlideRangeNm,
-  aerodromeToWaypoint, hasAvgas, hasJet, isHard, isGrass, fmtBrg, fmtDist,
+  aerodromeToWaypoint, isRouteEnd, hasAvgas, hasJet, isHard, isGrass, fmtBrg, fmtDist,
   type AerodromeEntry, type AerodromeResult, type FuelFilter, type SurfaceFilter,
 } from '@open-vfr/shared/findDestination'
 import { foldForSearch } from '@open-vfr/shared/searchFold'
@@ -50,7 +50,7 @@ interface Props {
   /** In flight: each row's action is Direct To instead of Add to route. */
   directTo?:        boolean
   /** Current route points; with onInsertInRoute, rows offer insert-at-position. */
-  routePoints?:     { name?: string }[]
+  routePoints?:     { name?: string; lat: number; lng: number }[]
   onInsertInRoute?: (wp: RouteWaypoint, afterIdx: number) => void
   /** Saved places; matches (by name/folder) are listed above the aerodromes. */
   /** Save a typed coordinate as a place. */
@@ -70,6 +70,8 @@ const SURF_OPTS: { v: SurfaceFilter; label: string }[] = [
 
 export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyTo, onAddToRoute, directTo = false, routePoints, onInsertInRoute, places, onSavePlace, open: openProp, onOpenChange }: Props) {
   const addIcon = directTo ? 'navigateFilled' as const : 'add' as const
+  // On the ground a point that already ends the route shows a tick instead of "+": adding it again would repeat it.
+  const isEnd = (lat: number, lng: number) => !directTo && isRouteEnd(routePoints, lat, lng)
   const addVerb = directTo ? 'Direct to' : 'Add to route:'
   const styles = useThemedStyles(makeStyles)
   const sheetMaxH = useSheetMaxHeight()
@@ -190,11 +192,12 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
       <TouchableOpacity
         style={styles.addBtn}
         onPress={() => onAddToRoute(aerodromeToWaypoint(a), true)}
+        disabled={isEnd(a.lat, a.lng)}
         testID={`find-destination-add-${a.icao}`}
-        accessibilityLabel={`${addVerb} ${a.icao}`}
+        accessibilityLabel={isEnd(a.lat, a.lng) ? `${a.icao} is the last point of the route` : `${addVerb} ${a.icao}`}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <AppIcon name={addIcon} size={18} color={theme.textPrimary} />
+        <AppIcon name={isEnd(a.lat, a.lng) ? 'check' : addIcon} size={18} color={isEnd(a.lat, a.lng) ? theme.textMuted : theme.textPrimary} />
       </TouchableOpacity>
       {insertBtn(a.icao, a.icao)}
     </View>
@@ -320,10 +323,11 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
                   <TouchableOpacity
                     style={styles.addBtn}
                     onPress={() => onAddToRoute({ lat: goTo.lat, lng: goTo.lng })}
-                    accessibilityLabel={directTo ? 'Direct to this position' : 'Add to route'}
+                    disabled={isEnd(goTo.lat, goTo.lng)}
+                    accessibilityLabel={directTo ? 'Direct to this position' : isEnd(goTo.lat, goTo.lng) ? 'Already the last point of the route' : 'Add to route'}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <AppIcon name={addIcon} size={18} color={theme.textPrimary} />
+                    <AppIcon name={isEnd(goTo.lat, goTo.lng) ? 'check' : addIcon} size={18} color={isEnd(goTo.lat, goTo.lng) ? theme.textMuted : theme.textPrimary} />
                   </TouchableOpacity>
                 </View>
                 )
@@ -342,10 +346,11 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
                   <TouchableOpacity
                     style={styles.addBtn}
                     onPress={() => onAddToRoute({ lat: p.lat, lng: p.lng, name: p.name })}
-                    accessibilityLabel={`${addVerb} ${p.name}`}
+                    disabled={isEnd(p.lat, p.lng)}
+                    accessibilityLabel={isEnd(p.lat, p.lng) ? `${p.name} is the last point of the route` : `${addVerb} ${p.name}`}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <AppIcon name={addIcon} size={18} color={theme.textPrimary} />
+                    <AppIcon name={isEnd(p.lat, p.lng) ? 'check' : addIcon} size={18} color={isEnd(p.lat, p.lng) ? theme.textMuted : theme.textPrimary} />
                   </TouchableOpacity>
                   {insertBtn(p.id, p.name)}
                 </View>

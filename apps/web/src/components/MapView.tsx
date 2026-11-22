@@ -5548,6 +5548,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             onFlyTo={(lat, lng) => {
               mapRef.current?.flyTo({ center: [lng, lat], zoom: 13, speed: 1.4 })
             }}
+            routePoints={routeWaypoints}
             onAddToRoute={(wp) => {
               setRouteWaypoints(p => [...p, wp])
               if (flyingMode === 'off') setExtending(true)

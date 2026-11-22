@@ -23,7 +23,7 @@ import css from './FindDestPanel.module.css'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import {
   parseAerodromesGeoJson, filterAndSortAerodromes, computeGlideRangeNm,
-  aerodromeToWaypoint, hasAvgas, hasJet, isHard, isGrass, fmtBrg, fmtDist,
+  aerodromeToWaypoint, isRouteEnd, hasAvgas, hasJet, isHard, isGrass, fmtBrg, fmtDist,
   type AerodromeEntry, type FuelFilter, type SurfaceFilter,
 } from '@open-vfr/shared/findDestination'
 import { IconX } from '@tabler/icons-react'
@@ -45,13 +45,15 @@ interface Props {
   onFlyTo:         (lat: number, lng: number) => void
   /** Append as a route waypoint */
   onAddToRoute:    (wp: RouteWaypoint) => void
+  /** Current route points: one that already ends the route is not offered again. */
+  routePoints?:    { lat: number; lng: number }[]
   onClose:         () => void
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export default function FindDestPanel({
-  center, homeIcao, aircraftProfile, onFlyTo, onAddToRoute, onClose,
+  center, homeIcao, aircraftProfile, onFlyTo, onAddToRoute, routePoints, onClose,
 }: Props) {
   const [aerodromes, setAerodromes] = useState<AerodromeEntry[]>([])
   const [search,      setSearch]    = useState('')
@@ -192,8 +194,9 @@ export default function FindDestPanel({
               <button
                 className={css.addBtn}
                 onClick={() => onAddToRoute(aerodromeToWaypoint(a))}
-                title="Add to route"
-              >+</button>
+                disabled={isRouteEnd(routePoints, a.lat, a.lng)}
+                title={isRouteEnd(routePoints, a.lat, a.lng) ? 'Already the last point of the route' : 'Add to route'}
+              >{isRouteEnd(routePoints, a.lat, a.lng) ? '✓' : '+'}</button>
             </div>
           ))}
 

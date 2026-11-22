@@ -178,3 +178,12 @@ export function fmtDist(nm: number): string {
 export function aerodromeToWaypoint(a: AerodromeEntry): RouteWaypoint {
   return { lat: a.lat, lng: a.lng, name: a.icao, elevationFt: a.elevationFt }
 }
+
+/** A point this close (NM) to the route's last waypoint is that waypoint: adding it again would only repeat it. */
+const SAME_POINT_NM = 0.05
+
+/** Whether (lat, lng) is the route's last waypoint already (the "+" in Find a Destination then has nothing to add). */
+export function isRouteEnd(route: readonly { lat: number; lng: number }[] | undefined, lat: number, lng: number): boolean {
+  const last = route?.[route.length - 1]
+  return !!last && distanceNm(last, { lat, lng }) < SAME_POINT_NM
+}

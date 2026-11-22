@@ -308,9 +308,13 @@
   transition: background 0.1s, color 0.1s;
   padding: 0 4px;
 }
-.addBtn:hover {
+.addBtn:hover:not(:disabled) {
   background: var(--tint-blue-low);
   color: var(--accent-blue);
+}
+.addBtn:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 /* Empty state */
