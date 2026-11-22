@@ -35,7 +35,7 @@ Altitudes, speeds and other flying numbers always show the same way on every dev
 
 | Setting | Options | Default | Notes |
 |---|---|---|---|
-| Auto flying mode | Off, Ask, Auto | Ask | See [Flying mode and alerts](./flying-and-alerts.md) |
+| Auto flying mode | Off, Ask, Auto | Auto | See [Flying mode and alerts](./flying-and-alerts.md) |
 | Auto zoom | on, off | on | Web: toggle in the map tools menu while following |
 | Log split timeout | Per leg, 1, 2, 5, 10, 30 min | 5 min | How long a log stays open after landing. See [Flight logs](./flight-logs.md) |
 | Log simulated flights | on, off | off | See [Simulators and devices](./simulators-and-devices.md) |

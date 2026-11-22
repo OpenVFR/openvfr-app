@@ -8,7 +8,7 @@ import { settings as db } from '../db'
 import type { Units } from '../utils/units'
 import { DEFAULT_UNITS } from '../utils/units'
 import type { ThemeName } from '../styles/theme'
-import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
+import { AUTO_FLY_DEFAULT, type AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
 import { PARK_TIMEOUT_DEFAULT, type ParkTimeoutOption } from '@open-vfr/shared/parkTimeout'
 import { DEFAULT_MSA_MARGINS, type MsaMargins } from '@open-vfr/shared/msaMargins'
 
@@ -98,7 +98,7 @@ const DEFAULTS: AppSettings = {
   airspaceCeilingFt:   9_500,
   trafficVertFilterFt: 5000,
   autoZoom:            true,
-  autoFlyMode:         'ask',
+  autoFlyMode:         AUTO_FLY_DEFAULT,
   parkTimeoutSec:      PARK_TIMEOUT_DEFAULT,
   recordSimulatedFlights: false,
   trajectoryNm:        5,

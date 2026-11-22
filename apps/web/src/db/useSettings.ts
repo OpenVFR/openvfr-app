@@ -639,7 +639,7 @@ export function useRecordSimulatedFlights(): [boolean, (v: boolean) => void] {
 // ---------------------------------------------------------------------------
 // useAutoFlyMode — 'off' | 'ask' | 'auto': whether takeoff / landing detected
 // from position fixes starts / stops flying mode (ask = show a prompt).
-// Persisted to RxDB; default 'ask'.
+// Persisted to RxDB; default 'auto'.
 // ---------------------------------------------------------------------------
 const AUTO_FLY_KEY = 'ovfr:autoFlyMode'
 

@@ -31,7 +31,7 @@
 
 export type AutoFlyMode = 'off' | 'ask' | 'auto'
 export const AUTO_FLY_MODES: readonly AutoFlyMode[] = ['off', 'ask', 'auto']
-export const AUTO_FLY_DEFAULT: AutoFlyMode = 'ask'
+export const AUTO_FLY_DEFAULT: AutoFlyMode = 'auto'
 
 export const AIRBORNE_SPD_KTS      = 40
 export const AIRBORNE_CONFIRM_FIXES = 5

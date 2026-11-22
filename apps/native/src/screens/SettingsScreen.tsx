@@ -22,7 +22,7 @@ import { AssistantHelpModal } from '../components/AssistantHelpModal'
 import { ConnectedAssistantsModal } from '../components/ConnectedAssistantsModal'
 import { useSimContext }      from '../context/SimContext'
 import { SimConnectSheet }    from '../components/SimConnectSheet'
-import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
+import { AUTO_FLY_DEFAULT, type AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
 import { PARK_TIMEOUT_OPTIONS, parseParkTimeout, parkTimeoutLabel, type ParkTimeoutOption } from '@open-vfr/shared/parkTimeout'
 import { describeGpsAltitudeReference, gpsAltitudeReferenceStatus, subscribeGpsAltitudeReference } from '@open-vfr/shared/gpsAltitudeReference'
 import { MSA_CLEARANCE_RANGE_FT } from '@open-vfr/shared/msaMargins'
@@ -311,7 +311,7 @@ export function SettingsScreen() {
 
       <Section title="Flying mode">
         <RowAutoFly
-          value={settings.autoFlyMode ?? 'ask'}
+          value={settings.autoFlyMode ?? AUTO_FLY_DEFAULT}
           onChange={(v) => update({ autoFlyMode: v })}
         />
         <RowParkTimeout

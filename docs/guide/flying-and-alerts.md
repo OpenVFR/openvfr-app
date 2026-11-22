@@ -112,13 +112,13 @@ Flying mode can start and stop itself from takeoff and landing. Under
 **Settings → Auto flying mode**, choose:
 
 - **Off**: never.
-- **Ask** (default): a prompt suggests starting or stopping.
-- **Auto**: acts immediately.
+- **Ask**: a prompt suggests starting or stopping.
+- **Auto** (default): acts immediately.
 
 | | Rule |
 |---|---|
 | Start suggestion | Ground speed at or above the start speed on 5 fixes in a row (accuracy 100 m or better), while not flying, and at least 200 ft above the highest ground within about 500 m. Speed alone is not enough, so driving (also over a bridge) or a train ride does not start a flight. Where the app has no terrain data (the web app on the ground) it needs a 300 ft climb within a few minutes instead. It fires once and re-arms after speed falls below the landed speed. |
-| Stop suggestion | After the aircraft was seen at takeoff speed and 60 s have passed: ground speed below the landed speed on 10 fixes in a row. A slow spell right after takeoff does not trigger it. |
+| Stop suggestion | After the aircraft was seen at takeoff speed and 60 s have passed: ground speed below the landed speed on 10 fixes in a row. A slow spell right after takeoff does not trigger it, and neither does slow flight (a hover, or a descent into the wind): while the altitude keeps changing, or the aircraft is 200 ft or more above the highest ground around, it still counts as flying. |
 | After a manual stop | No new start suggestion until speed drops below the landed speed. |
 
 The three speeds come from the aircraft's **Takeoff speed** `V`: takeoff

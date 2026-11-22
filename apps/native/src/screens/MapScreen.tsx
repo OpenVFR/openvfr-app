@@ -125,7 +125,7 @@ import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
 import { trackToGeoJson, liveTrailGeoJson } from '@open-vfr/shared/flightLogStats'
 import { nextPathAhead, pathAheadLegOverrides, type PathAheadState } from '@open-vfr/shared/pathAhead'
 import { parseParkTimeout } from '@open-vfr/shared/parkTimeout'
-import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
+import { autoFlyThresholds, AUTO_FLY_DEFAULT } from '@open-vfr/shared/autoFlyDetect'
 import { iasToTas } from '@open-vfr/shared/airspeed'
 import { VerticalProfile, defaultChartHeight, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
 import { RulerHeaderStart, RulerHeaderEnd, RouteHeaderStart } from '../components/RulerHeaderStats'
@@ -1025,7 +1025,7 @@ function MapScreenForCountry() {
   // Takeoff / landing detection from the always-on GPS fix. Simulator flights
   // never auto start or stop (fix is null while the sim drives).
   const autoFly = useAutoFlyDetect(
-    settings.autoFlyMode ?? 'ask',
+    settings.autoFlyMode ?? AUTO_FLY_DEFAULT,
     simFlight.active ? null : position,
     flying && !simFlight.active,
     { start: handleStartGpsFly, stop: () => { deferLogCloseRef.current = true; handleStopFlight() } },
