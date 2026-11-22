@@ -3,6 +3,8 @@ import { initialAutoFlyState, stepAutoFly, autoFlyThresholds, lowestRecentAltFt,
 
 // Default: 1000 ft above 100 ft terrain, i.e. clearly in the air.
 const AIR = { altFt: 1100, groundFt: 100 }
+// On the ground (a landing).
+const GROUND = () => ({ altFt: 110, groundFt: 100 })
 
 function run(
   speeds: number[], flying: boolean, st = initialAutoFlyState(), t0 = 0, dt = 1000, acc = 10, thr?: AutoFlyThresholds,
@@ -40,7 +42,7 @@ describe('autoFlyDetect', () => {
   })
   it('suggests stop after landing once airborne long enough', () => {
     let r = run([60], true)
-    r = run(Array(15).fill(5), true, r.state, 70_000)
+    r = run(Array(15).fill(5), true, r.state, 70_000, 1000, 10, undefined, GROUND)
     expect(r.events).toEqual(['suggest-stop'])
   })
   it('does not suggest stop during a short slow spell right after takeoff', () => {
@@ -50,6 +52,31 @@ describe('autoFlyDetect', () => {
   })
   it('never suggests stop if never airborne', () => {
     expect(run(Array(100).fill(0), true, initialAutoFlyState(), 0, 5000).events).toEqual([])
+  })
+})
+
+describe('autoFlyDetect: slow but still airborne is not landed', () => {
+  const stopRun = (alt: (i: number) => { altFt?: number | null }, acc = 10) => {
+    const r = run([60], true)
+    return run(Array(40).fill(5), true, r.state, 70_000, 1000, acc, undefined, alt).events
+  }
+  it('a hover losing height fast never stops', () => {
+    expect(stopRun(i => ({ altFt: 1500 - i * 20 }))).toEqual([])
+  })
+  it('stops once the altitude has settled', () => {
+    expect(stopRun(i => ({ altFt: i < 10 ? 1500 - i * 20 : 100 }))).toEqual(['suggest-stop'])
+  })
+  it('a steady altitude (parked, GPS noise) stops', () => {
+    expect(stopRun(i => ({ altFt: 100 + (i % 3) * 5 }))).toEqual(['suggest-stop'])
+  })
+  it('a level hover well above the terrain never stops', () => {
+    expect(stopRun(() => ({ altFt: 900, groundFt: 150 }))).toEqual([])
+  })
+  it('level and close to the terrain stops', () => {
+    expect(stopRun(() => ({ altFt: 160, groundFt: 150 }))).toEqual(['suggest-stop'])
+  })
+  it('inaccurate fixes never stop', () => {
+    expect(stopRun(() => ({ altFt: 100 }), 500)).toEqual([])
   })
 })
 
@@ -108,7 +135,7 @@ describe('autoFlyThresholds', () => {
   it('a fast aircraft is not stopped by a slow-ish spell', () => {
     const fast = autoFlyThresholds(60) // landed < 40
     let r = run([90], true, initialAutoFlyState(), 0, 1000, 10, fast)
-    r = run(Array(15).fill(30), true, r.state, 70_000, 1000, 10, fast)
+    r = run(Array(15).fill(30), true, r.state, 70_000, 1000, 10, fast, GROUND)
     expect(r.events).toEqual(['suggest-stop'])
     r = run([90], true, initialAutoFlyState(), 0, 1000, 10, fast)
     r = run(Array(15).fill(50), true, r.state, 70_000, 1000, 10, fast)

@@ -24,8 +24,8 @@ describe('nameFlownEvents', () => {
   })
 
   it('keeps the plain label away from every place, and leaves other events alone', () => {
-    const out = nameFlownEvents([ev('landing', 50, 10, 'Landing'), ev('gap', 55.5, 13.5, 'GPS lost 1 min'), ev('airspace', 55.5, 13.5, 'Entered C X')], naming)
-    expect(out.map(e => e.label)).toEqual(['Landing', 'GPS lost 1 min', 'Entered C X'])
+    const out = nameFlownEvents([ev('landing', 50, 10, 'Landing'), ev('gap', 55.5, 13.5, 'Not recorded 1 min'), ev('airspace', 55.5, 13.5, 'Entered C X')], naming)
+    expect(out.map(e => e.label)).toEqual(['Landing', 'Not recorded 1 min', 'Entered C X'])
   })
 
   it('without naming data the events are unchanged, and the input is not modified', () => {

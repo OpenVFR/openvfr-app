@@ -145,9 +145,11 @@ export function useGoFlying(routeWaypoints: RouteWaypoint[]): UseGoFlyingReturn 
           lng:      pos.coords.longitude,
           altFt:    pos.coords.altitude == null ? 0
             : (gpsAltitudeReference() === 'ellipsoid' ? ellipsoidToMslM(pos.coords.altitude, pos.coords.latitude, pos.coords.longitude) : pos.coords.altitude) * 3.28084,
+          ...(pos.coords.altitude == null ? { noAlt: true as const } : {}),
           ...(pos.coords.altitude != null ? { rawAltM: pos.coords.altitude } : {}),
           ...(pos.coords.altitudeAccuracy != null ? { altAccuracyM: pos.coords.altitudeAccuracy } : {}),
           speedKts: (pos.coords.speed     ?? 0) * 1.94384,
+          ...(pos.coords.speed == null ? { noSpeed: true as const } : {}),
           trackDeg: (pos.coords.heading   ?? 0) || 0,
           accuracy: pos.coords.accuracy,
         })

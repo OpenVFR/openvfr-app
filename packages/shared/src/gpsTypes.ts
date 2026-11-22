@@ -16,8 +16,12 @@ export type GpsPosition = {
   rawAltM?: number
   /** Real GPS only: the platform's vertical accuracy estimate (m), if any. */
   altAccuracyM?: number
+  /** Real GPS only: the fix carried no altitude (`altFt` is then 0, which is not a height). */
+  noAlt?: true
   /** Ground speed in knots. */
   speedKts: number
+  /** Real GPS only: the fix carried no speed (`speedKts` is then 0, which is not standing still). */
+  noSpeed?: true
   /** True track 0–360°. */
   trackDeg: number
   /** Horizontal accuracy in metres (0 for simulation). */

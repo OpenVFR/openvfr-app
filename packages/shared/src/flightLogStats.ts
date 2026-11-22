@@ -7,6 +7,8 @@
  * (flights, landings, touch-and-gos) is recovered from the track.
  */
 
+import { LANDED_ALT_RANGE_FT } from './autoFlyDetect'
+
 export interface LogTrackPoint {
   altFt:  number
   spdKts: number
@@ -46,7 +48,24 @@ export const GAP_MIN_MS = 30_000
 /** Parked points kept after the last moving point when trimming a log's tail. */
 export const PARKED_TAIL_KEEP_MS = 15_000
 
+/** How much of a slow spell is looked at to tell a landing from slow flight (a parked GPS altitude drifts over minutes). */
+const SLOW_SPELL_CHECK_MS = 15_000
+
 interface Segment { startTs: number; endTs: number; endIdx: number }
+
+/**
+ * Whether the slow point `i` is still flight: within SLOW_SPELL_CHECK_MS before and after it, in the same slow
+ * spell, the altitude changes by LANDED_ALT_RANGE_FT or more (a gyro or helicopter hovering down, a steep
+ * descent into the wind). On a runway the altitude stays put. Looking both ways keeps the last seconds of a
+ * descending hover from reading as a landing. Same rule as the live landing detection (autoFlyDetect).
+ */
+function slowButAirborne(track: LogTrackPoint[], i: number, landedKts: number): boolean {
+  let min = Infinity, max = -Infinity
+  const note = (k: number) => { const a = track[k].altFt; if (Number.isFinite(a)) { min = Math.min(min, a); max = Math.max(max, a) } }
+  for (let k = i; k >= 0 && track[k].spdKts < landedKts && track[i].ts - track[k].ts <= SLOW_SPELL_CHECK_MS; k--) note(k)
+  for (let k = i + 1; k < track.length && track[k].spdKts < landedKts && track[k].ts - track[i].ts <= SLOW_SPELL_CHECK_MS; k++) note(k)
+  return max - min >= LANDED_ALT_RANGE_FT
+}
 
 function flyingSegments(track: LogTrackPoint[], thr: LogSpeedThresholds): Segment[] {
   const segs: Segment[] = []
@@ -56,6 +75,9 @@ function flyingSegments(track: LogTrackPoint[], thr: LogSpeedThresholds): Segmen
     if (start < 0) {
       if (spd >= thr.takeoffKts) start = i
     } else if (spd < thr.landedKts) {
+      // Still changing height: not a landing (yet). Judged again at the next point, so a slow descent that
+      // ends in a settled stop is still a landing there, like in the live detection (autoFlyDetect).
+      if (slowButAirborne(track, i, thr.landedKts)) continue
       segs.push({ startTs: track[start].ts, endTs: track[i].ts, endIdx: i })
       start = -1
     }

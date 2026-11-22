@@ -23,7 +23,7 @@ import { logRouteJson, type FlightLogRoute } from '@open-vfr/shared/flightLogRou
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { getDb, type TrackPoint, type FlightLogDocType } from '../db'
 import { trimParkedTail, simulatedFixAction } from '@open-vfr/shared/flightLogStats'
-import { takeoffRun } from '@open-vfr/shared/flightLogPreroll'
+import { takeoffRun, fillLogHole } from '@open-vfr/shared/flightLogPreroll'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { FlyingMode } from '../utils/gpsTypes'
 import { quickDistNm } from '@open-vfr/shared/quickDist'
@@ -172,6 +172,8 @@ export function useFlightLog(
     const sim = simulationRef.current
     const simAction = simulatedFixAction(sim, stateRef.current.logId ? stateRef.current.simulated : null)
     if (simAction === 'ignore') return
+    // A fix without a speed or an altitude says nothing about either: 0 kt would read as landed, 0 ft as a height.
+    if (position.noSpeed || position.noAlt) return
 
     const s   = stateRef.current
     const now = Date.now()
@@ -219,6 +221,7 @@ export function useFlightLog(
     // in the same log. If speed climbs back above the takeoff threshold the park
     // timer is cancelled and the existing log continues seamlessly.
     if (s.phase === 'taxiing') {
+      if (!sim.simulated && !s.simulated) fillLogHole(s, prerollRef?.current ?? [], now)
       // Ground track recording
       if (s.prevLat !== 0 || s.prevLng !== 0) {
         s.distanceNm += quickDistNm(s.prevLat, s.prevLng, position.lat, position.lng)
@@ -266,6 +269,7 @@ export function useFlightLog(
 
     // ── Flying: track recording + landing detection ───────────────────────
     if (s.phase === 'flying') {
+      if (!sim.simulated && !s.simulated) fillLogHole(s, prerollRef?.current ?? [], now)
       if (s.prevLat !== 0 || s.prevLng !== 0) {
         s.distanceNm += quickDistNm(s.prevLat, s.prevLng, position.lat, position.lng)
       }

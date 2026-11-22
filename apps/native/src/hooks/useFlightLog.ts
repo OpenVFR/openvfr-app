@@ -20,7 +20,7 @@ import * as Crypto from 'expo-crypto'
 import { trimParkedTail, simulatedFixAction } from '@open-vfr/shared/flightLogStats'
 import { logPlaceNear, missingLogAerodromes, type LogAerodrome, type LogPlace } from '@open-vfr/shared/flightLogAerodromes'
 import { canResumeLog, resumableUntil, type ResumePoint } from '@open-vfr/shared/flightLogResume'
-import { takeoffRun, trimPreroll } from '@open-vfr/shared/flightLogPreroll'
+import { takeoffRun, trimPreroll, fillLogHole } from '@open-vfr/shared/flightLogPreroll'
 import { isSyncableLog } from '@open-vfr/shared/cloudSyncRows'
 import { getAerodromes } from './useNearbyFrequencies'
 import { notifyLocalChange } from '../sync/cloudSync'
@@ -140,7 +140,8 @@ export function useFlightLog(
   // found here (@open-vfr/shared/flightLogPreroll).
   const prerollRef = useRef<TrackPoint[]>([])
   useEffect(() => {
-    if (!gpsFix) return
+    // A fix without altitude or speed is skipped: these points become part of a log, and an invented 0 would show in it.
+    if (!gpsFix || gpsFix.noAlt || gpsFix.noSpeed) return
     const now = Date.now()
     const buf = prerollRef.current
     if (buf.length > 0 && now - buf[buf.length - 1]!.ts < TRACK_INTERVAL_MS) return
@@ -154,6 +155,8 @@ export function useFlightLog(
     const sim = simulationRef.current
     const simAction = simulatedFixAction(sim, stateRef.current.logId ? stateRef.current.simulated : null)
     if (simAction === 'ignore') return
+    // A fix without a speed or an altitude says nothing about either: 0 kt would read as landed, 0 ft as a height.
+    if (position.noSpeed || position.noAlt) return
 
     const s   = stateRef.current
     const now = Date.now()
@@ -206,6 +209,7 @@ export function useFlightLog(
     }
 
     if (s.phase === 'taxiing') {
+      if (!sim.simulated && !s.simulated) fillLogHole(s, prerollRef.current, now)
       if (s.prevLat !== 0 || s.prevLng !== 0) {
         s.distanceNm += quickDistNm(s.prevLat, s.prevLng, position.lat, position.lng)
       }
@@ -237,6 +241,7 @@ export function useFlightLog(
     }
 
     if (s.phase === 'flying') {
+      if (!sim.simulated && !s.simulated) fillLogHole(s, prerollRef.current, now)
       if (s.prevLat !== 0 || s.prevLng !== 0) {
         s.distanceNm += quickDistNm(s.prevLat, s.prevLng, position.lat, position.lng)
       }

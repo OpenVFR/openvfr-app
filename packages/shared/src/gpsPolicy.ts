@@ -15,9 +15,13 @@
  *                  returned to the foreground): best accuracy at 1 Hz, no
  *                  service. The 2 minutes after opening keep a takeoff that
  *                  starts right away (or an app opened in the air) fast to detect.
- *   ground-idle    stationary: balanced accuracy every 10 s (a position dot is
- *                  all that is needed), no service, and nothing at all while the
- *                  app is in the background.
+ *   ground-idle    stationary: still the satellite receiver, at a slower rate,
+ *                  no service, and nothing at all while the app is in the
+ *                  background. NOT a network-only ("balanced") request: such
+ *                  fixes carry no speed and no altitude, and where there is no
+ *                  Wi-Fi or cell coverage (an airfield) there are none at all,
+ *                  so the app never saw the taxi or the takeoff and stayed in
+ *                  this tier for the whole flight (no automatic flying mode).
  *
  * Pure functions; the platform glue is in apps/native (tasks/locationTask.ts,
  * hooks/useGps.ts).
@@ -26,7 +30,8 @@
 export type GpsTier = 'flight' | 'ground-active' | 'ground-idle'
 
 export interface GpsRequestSpec {
-  accuracy: 'best' | 'balanced'
+  /** Both use the satellite receiver; `high` at a slower rate (see the platform glue for the exact profile). */
+  accuracy: 'best' | 'high'
   timeIntervalMs: number
   distanceIntervalM: number
   /** A foreground service (Android) / background location (iOS): fixes keep coming with the screen off. */
@@ -36,14 +41,14 @@ export interface GpsRequestSpec {
 export const GPS_REQUESTS: Record<GpsTier, GpsRequestSpec> = {
   'flight':        { accuracy: 'best',     timeIntervalMs: 1_000,  distanceIntervalM: 0,  foregroundService: true },
   'ground-active': { accuracy: 'best',     timeIntervalMs: 1_000,  distanceIntervalM: 0,  foregroundService: false },
-  'ground-idle':   { accuracy: 'balanced', timeIntervalMs: 10_000, distanceIntervalM: 15, foregroundService: false },
+  'ground-idle':   { accuracy: 'high',     timeIntervalMs: 2_000,  distanceIntervalM: 0,  foregroundService: false },
 }
 
 /** At or above this ground speed (kt) the device counts as moving. */
 export const MOVING_KTS = 4
 /** After the last movement (or after opening the app) the fast tier is kept this long. */
 export const ACTIVE_HOLD_MS = 120_000
-/** A balanced fix jitters by tens of metres: a displacement only counts as movement beyond this. */
+/** A poor fix jitters by tens of metres: a displacement only counts as movement beyond this. */
 export const MIN_MOVE_M = 50
 
 export function gpsTier(input: { flying: boolean; lastMovedAtMs: number | null; nowMs: number }): GpsTier {
@@ -63,8 +68,8 @@ function distM(a: { lat: number; lng: number }, b: { lat: number; lng: number })
 }
 
 /**
- * Whether a new fix shows the device moving: its own speed, or (a balanced fix
- * carries no reliable speed) a displacement from the previous fix larger than
+ * Whether a new fix shows the device moving: its own speed, or (a fix without
+ * a reliable speed) a displacement from the previous fix larger than
  * the position jitter, at a speed that is not a walk.
  */
 export function isMoving(prev: GpsFixLike | null, fix: GpsFixLike): boolean {

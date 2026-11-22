@@ -97,7 +97,7 @@ part**. It appears only when:
 - neither is simulated or still being recorded.
 
 You are asked to confirm. The two parts become one new log; the gap stays
-marked as lost GPS. The combined log is saved before the parts are deleted,
+marked as not recorded. The combined log is saved before the parts are deleted,
 so a failure leaves an extra log rather than losing one. A joined log
 cannot be larger than 16 MB.
 

@@ -9,7 +9,8 @@ import AutoFlyPrompt from './AutoFlyPrompt'
 import { useThrottledValue } from '../hooks/useThrottledValue'
 import { useStableProps } from '../hooks/useStableProps'
 import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
-import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
+import { autoFlyThresholds, AUTO_FLY_RECENT_FLIGHT_MS } from '@open-vfr/shared/autoFlyDetect'
+import { useRecentlyEnded } from '../hooks/useRecentlyEnded'
 import { iasToTas } from '@open-vfr/shared/airspeed'
 import MapToolbar, { type ToolGroupDef, type ToolItem } from './MapToolbar'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -1075,15 +1076,28 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // position in GPS flying mode; sim / external feeds never auto start or stop.
   // Memoised on the fix objects: a new object every render would re-run the
   // detector on unrelated re-renders and over-count fixes.
+  const flyingPosition = flyingMode !== 'off' ? gpsPosition : null
+  // GPS flying mode ended a short while ago (stopped in the air, a hover read as a landing): the terrain is
+  // then looked up for the passive position too, so flying mode finds its way back without a climb.
+  const recentGpsFlight = useRecentlyEnded(flyingMode === 'gps', AUTO_FLY_RECENT_FLIGHT_MS)
+  const restartCheckPos = useMemo(() => (
+    flyingMode === 'off' && passivePos && recentGpsFlight ? { lat: passivePos.lat, lng: passivePos.lng } : null
+  ), [flyingMode, passivePos, recentGpsFlight])
+  const terrainFt = useTerrainElevation(flyingPosition ?? restartCheckPos)
+  // Ref, not a dep of the fix below: a new terrain sample must not count as a fix.
+  const terrainFtRef = useRef(terrainFt)
+  terrainFtRef.current = terrainFt
   const autoFlyFix = useMemo(() => (
     flyingMode === 'off' && passivePos
-      // No terrain lookup runs on the ground here: the start needs a 300 ft
-      // climb within a few minutes instead (see @open-vfr/shared/autoFlyDetect).
-      ? { speedKts: passivePos.speedKts, accuracyM: passivePos.accuracyM, altFt: passivePos.altFt, groundFt: null }
+      // On the ground no terrain lookup runs here: the start needs a 300 ft climb within a few minutes
+      // instead (see @open-vfr/shared/autoFlyDetect), except shortly after a flight (restartCheckPos).
+      ? { speedKts: passivePos.speedKts, accuracyM: passivePos.accuracyM, altFt: passivePos.altFt, groundFt: restartCheckPos ? terrainFtRef.current : null }
       : flyingMode === 'gps' && gpsPosition
-        ? { speedKts: gpsPosition.speedKts, accuracyM: gpsPosition.accuracy, altFt: gpsPosition.altFt, groundFt: null }
+        // A fix without a speed or an altitude says nothing about either (0 kt would read as landed). With the
+        // terrain known, a slow spell well above it is no landing.
+        ? { speedKts: gpsPosition.noSpeed ? null : gpsPosition.speedKts, accuracyM: gpsPosition.accuracy, altFt: gpsPosition.noAlt ? null : gpsPosition.altFt, groundFt: terrainFtRef.current }
         : null
-  ), [flyingMode, passivePos, gpsPosition])
+  ), [flyingMode, passivePos, gpsPosition, restartCheckPos])
   // Takeoff / landing speeds from the selected aircraft (category default when unset).
   const flyThresholds = useMemo(
     () => autoFlyThresholds(selectedAircraftProfile?.takeoffSpeedKts, selectedAircraftProfile?.category),
@@ -1101,7 +1115,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           lat: passivePos.lat, lng: passivePos.lng, altFt: passivePos.altFt,
           spdKts: passivePos.speedKts, trkDeg: passivePos.headingDeg ?? 0,
         })
-      : flyingMode === 'gps' && gpsPosition
+      : flyingMode === 'gps' && gpsPosition && !gpsPosition.noAlt && !gpsPosition.noSpeed
         ? { lat: gpsPosition.lat, lng: gpsPosition.lng, altFt: gpsPosition.altFt, spdKts: gpsPosition.speedKts, trkDeg: gpsPosition.trackDeg }
         : null
     if (!fix) return
@@ -1280,8 +1294,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const nearestFeature = useNearestFeature(flyingMode !== 'off' ? gpsPosition : null, trackedPoint)
   // Ground elevation under the aircraft lifts AGL airspace limits ("1500ft AGL",
   // "300m AGL" ceilings of model/glider areas) to altitudes before comparing.
-  const flyingPosition = flyingMode !== 'off' ? gpsPosition : null
-  const terrainFt = useTerrainElevation(flyingPosition)
   // Verify the GPS altitude reference (ellipsoid vs sea level) against the
   // terrain under real GPS fixes only (not the keyboard / external sims).
   useEffect(() => {

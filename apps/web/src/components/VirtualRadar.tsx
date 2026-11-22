@@ -2139,7 +2139,7 @@ function VirtualRadar({
           </span>
         )}
         {flownGapInfo && flownGapInfo.count > 0 && (
-          <span className={css.offTrackBadge} title="The recording has holes (GPS lost or the app suspended). Nothing is known about the flight there: drawn as a dashed red line between the two ends.">
+          <span className={css.offTrackBadge} title="The recording has holes (flying mode off, GPS lost or the app suspended). Nothing is known about the flight there: drawn as a dashed red line between the two ends.">
             ⚠ {flownGapInfo.count} GPS gap{flownGapInfo.count > 1 ? 's' : ''}, longest {formatElapsed(flownGapInfo.largestMs)}
           </span>
         )}

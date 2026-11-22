@@ -24,7 +24,7 @@ const STALE_AGE_MS    = 5 * 60_000
 type Sample = { elevFt: number; lat: number; lng: number; at: number }
 
 
-export function useTerrainElevation(position: GpsPosition | null): number | null {
+export function useTerrainElevation(position: Pick<GpsPosition, 'lat' | 'lng'> | null): number | null {
   const [sample, setSample] = useState<Sample | null>(null)
   const lastFetchRef = useRef<{ lat: number; lng: number; at: number } | null>(null)
   const inFlightRef  = useRef(false)

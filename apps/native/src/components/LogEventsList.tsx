@@ -1,5 +1,5 @@
 /**
- * A flight log's events (takeoff, landing, touch-and-go, GPS lost, airspace
+ * A flight log's events (takeoff, landing, touch-and-go, not recorded, airspace
  * entered), worked out when shown: the track is parsed and the airspace it
  * crosses looked up only then. Picking one opens the log on the map there.
  */

@@ -70,6 +70,7 @@ function sameFix(a: GpsPosition, b: GpsPosition): boolean {
     && Math.abs(a.altFt - b.altFt) < 10
     && Math.abs(a.accuracy - b.accuracy) < 5
     && a.trackDeg === b.trackDeg
+    && a.noAlt === b.noAlt && a.noSpeed === b.noSpeed
 }
 
 /**
@@ -175,9 +176,11 @@ export function useGps(opts: { paused?: boolean } = {}): UseGpsResult {
         lat,
         lng,
         altFt:    alt ? alt.mslM * M_TO_FT : 0,
+        ...(alt ? {} : { noAlt: true as const }),
         ...(loc.altitude != null ? { rawAltM: loc.altitude } : {}),
         ...(loc.verticalAccuracy != null ? { altAccuracyM: loc.verticalAccuracy } : {}),
         speedKts,
+        ...(loc.speed != null ? {} : { noSpeed: true as const }),
         trackDeg: lastStableTrackRef.current,
         accuracy: loc.horizontalAccuracy ?? 0,
       }

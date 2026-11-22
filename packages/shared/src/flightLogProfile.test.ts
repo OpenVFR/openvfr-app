@@ -176,6 +176,6 @@ describe('flownEvents', () => {
     const pts = flightLogProfile(track)!.points
     const ev = flownEvents(pts, [], { takeoffKts: 30, landedKts: 20 })
     expect(ev.map((e) => e.kind)).toEqual(['takeoff', 'touch-and-go', 'gap', 'landing'])
-    expect(ev[2].label).toBe('GPS lost 1 min 01 s')
+    expect(ev[2].label).toBe('Not recorded 1 min 01 s')
   })
 })

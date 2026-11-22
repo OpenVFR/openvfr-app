@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { takeoffRun, trimPreroll, PREROLL_KEEP_MS } from './flightLogPreroll'
+import { takeoffRun, trimPreroll, fixesToFillHole, PREROLL_KEEP_MS } from './flightLogPreroll'
 
 const fx = (spdKts: number, ts: number) => ({ lat: 59, lng: 18, altFt: 100, spdKts, trkDeg: 90, ts })
 
@@ -22,5 +22,15 @@ describe('trimPreroll', () => {
   it('keeps the last PREROLL_KEEP_MS', () => {
     const fixes = [fx(0, 0), fx(0, 1000), fx(0, PREROLL_KEEP_MS + 500)]
     expect(trimPreroll(fixes, PREROLL_KEEP_MS + 500).map(f => f.ts)).toEqual([1000, PREROLL_KEEP_MS + 500])
+  })
+})
+
+describe('fixesToFillHole', () => {
+  const fixes = [fx(50, 1000), fx(50, 2000), fx(50, 3000), fx(50, 60_000), fx(50, 61_000)]
+  it('nothing while the log is being written', () => {
+    expect(fixesToFillHole(fixes, 60_000, 61_000)).toEqual([])
+  })
+  it('the fixes after the last recorded point, up to now', () => {
+    expect(fixesToFillHole(fixes, 2000, 61_000).map(f => f.ts)).toEqual([3000, 60_000])
   })
 })

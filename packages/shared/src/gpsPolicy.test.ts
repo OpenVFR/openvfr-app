@@ -22,9 +22,9 @@ describe('requests', () => {
     expect(GPS_REQUESTS['ground-active'].foregroundService).toBe(false)
     expect(GPS_REQUESTS['ground-idle'].foregroundService).toBe(false)
   })
-  it('idle asks rarely and for balanced accuracy', () => {
-    expect(GPS_REQUESTS['ground-idle'].accuracy).toBe('balanced')
-    expect(GPS_REQUESTS['ground-idle'].timeIntervalMs).toBeGreaterThanOrEqual(10_000)
+  it('idle is slower but still the satellite receiver (speed and altitude, also without Wi-Fi / cell)', () => {
+    expect(GPS_REQUESTS['ground-idle'].accuracy).toBe('high')
+    expect(GPS_REQUESTS['ground-idle'].timeIntervalMs).toBeGreaterThan(GPS_REQUESTS['ground-active'].timeIntervalMs)
   })
 })
 
@@ -33,7 +33,7 @@ describe('isMoving', () => {
     expect(isMoving(null, fix({ speedKts: 6 }))).toBe(true)
     expect(isMoving(null, fix({ speedKts: 2 }))).toBe(false)
   })
-  it('ignores jitter of a stationary balanced fix', () => {
+  it('ignores jitter of a stationary poor fix', () => {
     const a = fix({ accuracyM: 30, tMs: 0 })
     const b = fix({ lat: 59.0004, accuracyM: 35, tMs: 10_000 })   // ~45 m, within 2x accuracy
     expect(isMoving(a, b)).toBe(false)

@@ -418,7 +418,7 @@ export interface FlownEvent {
   /** Index into the flown points (inspect / jump there). */
   index:  number
   point:  FlownPoint
-  /** Short description, e.g. "Entered C STOCKHOLM CTR", "GPS lost 2 min 01 s". */
+  /** Short description, e.g. "Entered C STOCKHOLM CTR", "Not recorded 2 min 01 s". */
   label:  string
 }
 
@@ -460,7 +460,7 @@ export function flownEvents<B extends FlownBand>(
     }
   })
   for (let i = 1; i < points.length; i++) {
-    if (points[i].gapBefore) at('gap', i - 1, `GPS lost ${formatElapsed(points[i].ts - points[i - 1].ts)}`)
+    if (points[i].gapBefore) at('gap', i - 1, `Not recorded ${formatElapsed(points[i].ts - points[i - 1].ts)}`)
   }
   for (const e of flownAirspaceEntries(points, bands)) {
     at('airspace', e.index, `Entered ${e.band.class} ${e.band.name}`.trim())

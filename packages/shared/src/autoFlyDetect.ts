@@ -17,7 +17,12 @@
  *    once; re-arms only after speed drops below LANDED_SPD_KTS.
  *  - Flying: after the aircraft was seen at >= TAKEOFF_SPD_KTS and at least
  *    MIN_AIRBORNE_MS have passed, ground speed < LANDED_SPD_KTS for
- *    LANDED_CONFIRM_FIXES consecutive fixes -> 'suggest-stop'.
+ *    LANDED_CONFIRM_FIXES consecutive accurate fixes -> 'suggest-stop'. Speed
+ *    alone does not end a flight either: a gyro hovering, or a descent into the
+ *    wind, is slow but still in the air. While the GPS altitude changes by
+ *    LANDED_ALT_RANGE_FT or more during the slow spell, the count starts over,
+ *    and with the terrain known nothing ends AIRBORNE_AGL_FT or more above the
+ *    highest ground around (a level hover, slow flight into a strong wind).
  *
  * The three speeds scale with the aircraft's takeoff speed (aircraft profile,
  * else a per-category default) via autoFlyThresholds(); the exported constants
@@ -34,6 +39,9 @@ export const TAKEOFF_SPD_KTS       = 30
 export const LANDED_SPD_KTS        = 20
 export const LANDED_CONFIRM_FIXES  = 10
 export const MIN_AIRBORNE_MS       = 60_000
+/** Flying, slow: the altitude must stay within this (ft) over the whole slow spell to count as landed. A parked
+ *  aircraft's GPS altitude only wanders a little over ~10 s; a hover or a steep descent changes more. */
+export const LANDED_ALT_RANGE_FT   = 60
 /** Fixes less accurate than this are ignored for start detection. */
 export const MAX_ACCURACY_M        = 100
 /** Height (ft) above the HIGHEST ground around the fix that proves the
@@ -45,6 +53,8 @@ export const AIRBORNE_AGL_FT       = 200
  *  CLIMB_WINDOW_MS. Larger: hilly roads climb, and GPS noise counts twice. */
 export const CLIMB_FT              = 300
 export const CLIMB_WINDOW_MS       = 5 * 60_000
+/** After flying mode ends, a restart is looked for without the climb requirement for this long (a stop in the air). */
+export const AUTO_FLY_RECENT_FLIGHT_MS = 10 * 60_000
 
 /** Speed thresholds (kt) for one aircraft. */
 export interface AutoFlyThresholds {
@@ -97,12 +107,14 @@ export interface AutoFlyState {
   wasFlying: boolean
   /** Recent accurate altitudes while not flying (for the climb check without terrain). */
   altHistory: { t: number; altFt: number }[]
+  /** Flying: altitude range (ft) seen during the current slow spell; null outside one. */
+  slowAlt: { min: number; max: number } | null
 }
 
 export type AutoFlyEvent = 'suggest-start' | 'suggest-stop' | null
 
 export function initialAutoFlyState(): AutoFlyState {
-  return { fastFixes: 0, slowFixes: 0, airborneSince: null, suppressed: false, wasFlying: false, altHistory: [] }
+  return { fastFixes: 0, slowFixes: 0, airborneSince: null, suppressed: false, wasFlying: false, altHistory: [], slowAlt: null }
 }
 
 /**
@@ -173,15 +185,33 @@ export function stepAutoFly(
     if (fix.speedKts >= thr.takeoffKts) s.airborneSince = fix.t
     return { state: s, event }
   }
+  // A poor fix says nothing about speed or height: neither counts towards a landing nor breaks the count.
+  if (fix.accuracyM > MAX_ACCURACY_M) return { state: s, event }
   if (fix.speedKts < thr.landedKts && fix.t - s.airborneSince >= MIN_AIRBORNE_MS) {
-    s.slowFixes += 1
-    if (s.slowFixes >= LANDED_CONFIRM_FIXES) {
+    const alt = fix.altFt != null && Number.isFinite(fix.altFt) ? fix.altFt : null
+    if (alt !== null) {
+      s.slowAlt = s.slowAlt ? { min: Math.min(s.slowAlt.min, alt), max: Math.max(s.slowAlt.max, alt) } : { min: alt, max: alt }
+    }
+    if (alt !== null && fix.groundFt != null && Number.isFinite(fix.groundFt) && alt - fix.groundFt >= AIRBORNE_AGL_FT) {
+      // Clearly above the highest ground around: in the air, however slow.
       s.slowFixes = 0
-      s.airborneSince = null
-      event = 'suggest-stop'
+      s.slowAlt = null
+    } else if (s.slowAlt && s.slowAlt.max - s.slowAlt.min >= LANDED_ALT_RANGE_FT) {
+      // Still changing height: not landed. Start the spell over from here.
+      s.slowFixes = 0
+      s.slowAlt = alt !== null ? { min: alt, max: alt } : null
+    } else {
+      s.slowFixes += 1
+      if (s.slowFixes >= LANDED_CONFIRM_FIXES) {
+        s.slowFixes = 0
+        s.slowAlt = null
+        s.airborneSince = null
+        event = 'suggest-stop'
+      }
     }
   } else {
     s.slowFixes = 0
+    s.slowAlt = null
   }
   return { state: s, event }
 }

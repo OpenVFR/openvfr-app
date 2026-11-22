@@ -17,7 +17,7 @@ export interface AutoFlyFixInput {
   accuracyM: number
   /** GPS altitude ft AMSL; null = unknown (then no start is suggested). */
   altFt: number | null
-  /** Terrain elevation ft AMSL under the fix; null = unknown. */
+  /** Terrain elevation ft AMSL under the fix; null = unknown (a start then needs a climb, a landing a settled altitude). */
   groundFt: number | null
 }
 

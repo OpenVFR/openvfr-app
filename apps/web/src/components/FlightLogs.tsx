@@ -25,7 +25,7 @@ const EVENT_ICON: Record<FlownEvent['kind'], string> = {
 }
 
 /**
- * A log's events (takeoff, landing, touch-and-go, GPS lost, airspace entered),
+ * A log's events (takeoff, landing, touch-and-go, not recorded, airspace entered),
  * worked out when opened: the track is parsed and the airspace it crosses looked
  * up only then. Picking one opens the log on the map at that moment.
  */

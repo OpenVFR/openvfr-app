@@ -26,7 +26,7 @@
  * the background session / handle with its foreground service only while
  * flying; on the ground a cheaper foreground watch. The `next` API chooses
  * accuracy and rate by LocationProfile (no free-form interval), so the tiers
- * map to profiles: best = AIRBORNE, balanced = DEFAULT.
+ * map to profiles: best = AIRBORNE, high = FITNESS on Android (DEFAULT on iOS).
  */
 
 import { Platform } from 'react-native'
@@ -129,10 +129,12 @@ let handle: LocationUpdatesHandle | null = null
 
 const PROFILE: Record<GpsRequestSpec['accuracy'], LocationProfile> = {
   best:     LocationProfile.AIRBORNE,
-  balanced: LocationProfile.DEFAULT,
+  // Android's DEFAULT is the network-only "balanced" priority: no speed, no altitude, and no fix at all
+  // without Wi-Fi / cell, so a takeoff from standing still was never seen. FITNESS is the receiver at 2 s.
+  high:     Platform.OS === 'android' ? LocationProfile.FITNESS : LocationProfile.DEFAULT,
 }
 
-async function ensurePermissions(withNotification: boolean): Promise<boolean> {
+async function ensurePermissions(): Promise<boolean> {
   // Foreground ("while using the app") permission only. Gate the request on
   // the current status: once answered, a repeat request can't show a dialog
   // and only returns the settled status (or, on some Android versions,
@@ -143,12 +145,14 @@ async function ensurePermissions(withNotification: boolean): Promise<boolean> {
 
   // Android 13+: the foreground service's notification is hidden (and the
   // service invisible to the pilot) unless POST_NOTIFICATIONS is granted, and
-  // the system does not prompt for it on its own. Ask once; a refusal only
-  // hides the notification, tracking still works. Only the flight tier has a
-  // service, so only then.
-  if (withNotification && Platform.OS === 'android') {
+  // the system does not prompt for it on its own. Ask once, together with
+  // location at the first start (on the ground), not at the first takeoff
+  // where a dialog is in the way; a refusal only hides the notification,
+  // tracking still works.
+  if (Platform.OS === 'android') {
     const n = await Location.getNotificationPermissions().catch(() => null)
-    if (n && n.status === 'undetermined') await Location.requestNotificationPermissions().catch(() => {})
+    // Not awaited: the watch must not wait for an answer (an ignored dialog would leave the app without a position).
+    if (n && n.status === 'undetermined') void Location.requestNotificationPermissions().catch(() => {})
   }
   return true
 }
@@ -181,7 +185,7 @@ export function setLocationRequest(spec: GpsRequestSpec): Promise<'ok' | 'foregr
 async function applyRequest(spec: GpsRequestSpec): Promise<'ok' | 'foreground-denied' | 'unavailable'> {
   const key = JSON.stringify(spec)
   if (current?.key === key) return 'ok'
-  if (!(await ensurePermissions(spec.foregroundService))) return 'foreground-denied'
+  if (!(await ensurePermissions())) return 'foreground-denied'
   await Promise.all([orphanCleanup, legacyCleanup])
   await stopCurrent()
 

@@ -213,3 +213,27 @@ describe('flight log search', () => {
     expect(matchesLogSearch(t, '  ')).toBe(true)
   })
 })
+
+describe('computeLogStats: slow in the air is not a landing', () => {
+  const pt = (spdKts: number, altFt: number, s: number): LogTrackPoint => ({ spdKts, altFt, ts: s * 1000 })
+  const cruise = (from: number, n: number, alt: number) => Array.from({ length: n }, (_, i) => pt(70, alt, from + i))
+  it('a hover losing height stays one flight', () => {
+    const hover = Array.from({ length: 20 }, (_, i) => pt(5, 1500 - i * 25, 60 + i))
+    const s = computeLogStats([...cruise(0, 60, 1500), ...hover, ...cruise(80, 60, 1000)], { takeoffKts: 30, landedKts: 20 })
+    expect(s.flights).toBe(1)
+    expect(s.landings).toBe(0)
+  })
+  it('a slow descent ending in a settled stop is still a landing', () => {
+    const descent = Array.from({ length: 40 }, (_, i) => pt(8, 800 - i * 20, 60 + i))
+    const stop = Array.from({ length: 40 }, (_, i) => pt(2, 10 + (i % 3) * 3, 100 + i))
+    const s = computeLogStats([...cruise(0, 60, 1500), ...descent, ...stop], { takeoffKts: 30, landedKts: 20 })
+    expect(s.flights).toBe(1)
+    expect(s.landings).toBe(1)
+  })
+  it('a stop at a steady altitude is a landing', () => {
+    const roll = Array.from({ length: 20 }, (_, i) => pt(5, 120 + (i % 3) * 4, 60 + i))
+    const s = computeLogStats([...cruise(0, 60, 1500), ...roll, ...cruise(80, 60, 1000)], { takeoffKts: 30, landedKts: 20 })
+    expect(s.flights).toBe(2)
+    expect(s.landings).toBe(1)
+  })
+})
