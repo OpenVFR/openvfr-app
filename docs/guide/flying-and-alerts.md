@@ -13,6 +13,13 @@ Open the tools menu and choose **Go flying**. You can follow:
 - **Simulator:** a built-in simulator to try the app on the ground, or an
   external simulator. See [Simulators and devices](./simulators-and-devices.md).
 
+On native, **Go flying** first asks which aircraft you fly and whether to use
+the GPS (**Fly**) or the built-in simulator (**Simulate**). Without an aircraft
+the flight log does not say which one flew, and takeoff and landing are
+detected at default speeds.
+
+![Native app: the Flight Mode sheet with aircraft choice, Fly and Simulate](./images/native-flight-mode-start.png)
+
 Choose **Stop flying** to end it. Flying mode can also start and stop by
 itself from takeoff and landing (see below).
 
@@ -24,6 +31,8 @@ While flying mode is on:
   unavailable.
 
 ## The in-flight screen
+
+![Native app in flying mode (simulated flight): airspace alerts, route-ahead profile, simulator controls and the gauges strip](./images/native-flying-simulated.png)
 
 - **Instrument bar:** ground speed, track, altitude, and the next waypoint
   with its time and distance. Tap the next-waypoint value to cycle between

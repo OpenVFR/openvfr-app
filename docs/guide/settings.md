@@ -17,6 +17,8 @@ banners, Navigation, Vario, Simulator, Country, Offline Data and About.
 
 ![Web app: the Settings panel](./images/web-settings-panel.png)
 
+![Native app: the Settings screen, Units, Display and Flying mode sections](./images/native-settings.png)
+
 ## Units and display
 
 | Setting | Options | Default | Notes |

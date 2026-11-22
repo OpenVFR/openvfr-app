@@ -9,6 +9,8 @@ sidebar:
 
 Tap an aerodrome on the map. The card has three tabs.
 
+![Native app: the aerodrome card, Info tab, with sun times, frequencies, fuel and runways with wind components](./images/native-aerodrome-info.png)
+
 **Info**
 - Sunrise and sunset (UTC). Check them against your landing time.
 - Frequencies.
@@ -32,6 +34,8 @@ Tap an aerodrome on the map. The card has three tabs.
   runway drawn across it, and a speed dial.
 - Pick a runway to see the headwind and crosswind components. The longest
   runway is shown by default.
+
+![Native app: the aerodrome card, Weather tab, with METAR, wind compass and speed dial](./images/native-aerodrome-weather.png)
 
 **NOTAM**
 - NOTAMs for the aerodrome, then the wider regional list (areas, navaid
@@ -88,6 +92,14 @@ aerodromes by:
 Results are sorted by distance from your position, or from the map centre
 when there is no GPS fix, with the bearing and distance shown. Tap a row to
 see it on the map, or press **+** to add it to the route.
+
+![Native app: Find a Destination with the search field, fuel and surface filters and a result](./images/native-find-destination.png)
+
+On native each result also has an insert button next to **+**. It asks
+where in the route to put the aerodrome: **At start**, or after any
+existing waypoint.
+
+![Native app: choosing where to insert an aerodrome into the route](./images/native-find-destination-insert.png)
 
 ## Direct to
 

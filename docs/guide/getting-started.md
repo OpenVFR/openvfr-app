@@ -18,6 +18,8 @@ have already loaded.
 
 ## The basics
 
+![Native app: a planned route from ESOW to ESGG on the airspace map, with the vertical route profile below](./images/native-map-route-profile.png)
+
 - The map shows aviation layers on top of the basemap. See
   [Map and layers](./map-and-layers.md).
 - Tap or click features (aerodromes, airspaces, navaids, obstacles) to see

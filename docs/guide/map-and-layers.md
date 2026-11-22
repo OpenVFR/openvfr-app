@@ -44,6 +44,10 @@ there is no separate toggle for your places.
 
 ![Web app: the Layers panel with basemap, altitude filter and layer toggles](./images/web-layers-panel.png)
 
+On native the same switches are in the **Map display** sheet:
+
+![Native app: the Map display sheet with basemap, altitude filter and airspace toggles](./images/native-layers-panel.png)
+
 ## Airspace
 
 - Coloured by class, with a shaded band along the inside of the boundary so

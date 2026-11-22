@@ -50,6 +50,10 @@ Open the aircraft list from the planning panel. You can:
 
 Profiles sync between your devices when you are signed in.
 
+On native, **Add Aircraft…** opens this form (the image shows its first fields; scroll for fuel, climb and glide):
+
+![Native app: the New Aircraft form with POH assistant, identity, category and performance fields](./images/native-aircraft-form.png)
+
 ## The fields
 
 All speeds are indicated airspeed (IAS) in knots, fuel is in litres.

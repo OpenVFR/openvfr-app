@@ -92,9 +92,12 @@ pre-flight check still flags them).
 
 ## Pre-flight checks
 
-On the web app the check lists, in a warning panel (native marks legs
-below their MSA in red and warns when fuel is short, but has no airspace
-check in the plan):
+The web app lists the checks in a warning panel. Native shows the same
+checks as a **Pre-flight check** card at the bottom of the Route segment on
+the Plan screen, worked out by the same code, and also marks a leg below its
+MSA in red in the route table:
+
+![Native app: the Pre-flight check card on the Plan screen, with restricted-area, Class C and RMZ findings](./images/native-plan-preflight.png)
 
 - **Airspace:** the planned level enters a controlled or restricted
   airspace (class C, D, restricted and TRA).
@@ -151,6 +154,8 @@ GPX.
 
 On native, planning has its own screen with four segments along the top:
 
+![Native app: the Plan screen, Route segment, with wind, takeoff time, alternate, the route table and totals](./images/native-plan-route.png)
+
 - **Route:** the route table with wind (manual, global or forecast), takeoff
   time (UTC), alternate, the pre-flight warnings above, **Raise to MSA** and
   the fuel plan. The **⋯** button in the header opens the route actions
@@ -158,6 +163,8 @@ On native, planning has its own screen with four segments along the top:
 - **Aircraft:** your aircraft profiles. **Add Aircraft…** creates one; each
   profile can be selected, edited, duplicated and deleted. See
   [Aircraft and fuel](./aircraft-and-fuel.md).
+
+  ![Native app: the Aircraft segment with one profile and its edit, duplicate and delete buttons](./images/native-plan-aircraft.png)
 - **Places:** your saved places in folders. Search, add by coordinates,
   import and export GPX, and per place: add to the route, insert into the
   route, start a new route from it, show on the map, edit or delete. See

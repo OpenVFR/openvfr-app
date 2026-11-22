@@ -47,7 +47,7 @@ Legend: **Yes** = available, **Partial** = available with differences
 | Per-leg heading, wind correction, time | Yes | Yes | |
 | Forecast wind per leg, manual wind override | Yes | Yes | |
 | Fuel plan for a chosen aircraft | Yes | Yes | |
-| Pre-flight warnings (airspace, below MSA, fuel) | Yes | Partial | Web has a dedicated warnings panel with all three checks. Native marks a leg below its MSA in red and warns when fuel required exceeds the tank, but has no airspace check in the plan. |
+| Pre-flight warnings (airspace, below MSA, fuel and the other checks) | Yes | Yes | Web has a warnings panel, native a **Pre-flight check** card on the Plan screen. Both use the same check code. Native also marks a leg below its MSA in red in the route table. |
 | Alternate destination | Yes | Yes | |
 | Fuel stops: mark a point, fuel plan per hop, Suggest fuel stop | Yes | Yes | Web marks a stop in the leg editor; native in the leg's override panel. |
 | Aircraft profiles | Yes | Yes | |

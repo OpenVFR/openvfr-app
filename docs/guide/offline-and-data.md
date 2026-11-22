@@ -41,6 +41,8 @@ is out of date, a warning says so.
 Under **Settings → Offline data** you download the map and aviation data
 for the active country so the app works without a connection.
 
+![Native app: the Offline data screen listing each dataset and whether it is downloaded](./images/native-offline-data.png)
+
 - Required aviation data is always included.
 - Optional layers (basemap, land use, terrain, minimum-altitude grid,
   water) are ticked by default; contour lines are an extra you opt in to.
