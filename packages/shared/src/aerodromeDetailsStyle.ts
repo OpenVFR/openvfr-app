@@ -69,18 +69,21 @@ export const LABEL_ANCHORS: ('top' | 'bottom' | 'right' | 'left' | 'top-right' |
 export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
   // Areas, taxiways, parking, extra reporting points
   { id: 'ad-details-fill', type: 'fill', group: 'details', minzoom: DETAILS_MIN_ZOOM, filter: ['all', POLY, IS_AREA],
-    paint: { 'fill-color': COLOR, 'fill-opacity': ['case', ['get', 'pending'], 0.08, 0.16] } },
+    paint: { 'fill-color': COLOR, 'fill-opacity': ['case', ['get', 'pending'], 0.05, 0.1] } },       // a warning area, not a path: it must not outshout the circuits drawn over it
   { id: 'ad-details-outline', type: 'line', group: 'details', minzoom: DETAILS_MIN_ZOOM, filter: ['all', POLY, ['!', DASHED]],
-    paint: { 'line-color': COLOR, 'line-width': 1.8 } },
+    paint: { 'line-color': COLOR, 'line-width': 1.2 } },
   { id: 'ad-details-outline-dashed', type: 'line', group: 'details', minzoom: DETAILS_MIN_ZOOM, filter: ['all', POLY, DASHED],
-    paint: { 'line-color': COLOR, 'line-width': 1.8, 'line-dasharray': [3, 2] } },
+    paint: { 'line-color': COLOR, 'line-width': 1.2, 'line-dasharray': [3, 2] } },
   { id: 'ad-details-line', type: 'line', group: 'details', minzoom: DETAILS_MIN_ZOOM,
     filter: ['all', LINE, NOT_CIRCUIT, ['!', IS_HOLDING], ['!', DASHED]],
     layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': COLOR, 'line-width': 1.8 } },
   { id: 'ad-details-line-dashed', type: 'line', group: 'details', minzoom: DETAILS_MIN_ZOOM,
     filter: ['all', LINE, NOT_CIRCUIT, ['!', IS_HOLDING], DASHED],
     layout: { 'line-join': 'round' }, paint: { 'line-color': COLOR, 'line-width': 1.8, 'line-dasharray': [2, 2] } },
-  // Circuits ("Traffic circuits")
+  // Circuits ("Traffic circuits"): a white casing under each drawn leg, so a circuit reads on green land and beside amber areas
+  { id: 'ad-circuit-casing', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-opacity': 0.85, 'line-width': ['interpolate', ['linear'], ['zoom'], 9.5, 2.4, 12, 4.9, 15, 5.9] } },
   { id: 'ad-circuit-line', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!', DASHED]],
     layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': CIRCUIT_COLOR, 'line-width': CIRCUIT_WIDTH } },
   { id: 'ad-circuit-line-dashed', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN, DASHED],

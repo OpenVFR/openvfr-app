@@ -63,6 +63,13 @@ them (from zoom 9, with more detail as you zoom in):
   says what the source says and never suggests a pattern size. Tap a
   runway end in the aerodrome card to show only the circuits for it.
   Circuits for gliders, ultralights and other categories are named as such.
+  A drawn pattern shows its direction with chevrons even where the source
+  only draws an outline: the direction comes from the left or right hand
+  the source states for that runway. Where an aerodrome publishes a circuit
+  for some runways only, the card's **Circuits** list says which runways
+  have none stated ("Not stated for RWY 14, 04, 22. The ICAO standard is
+  left-hand unless published otherwise."). No arrow is drawn for a runway
+  nobody published a direction for.
 - **Fly-in routes**: an arrival route a club draws on its own map (for
   example the way to join from the north) is drawn and switched like a
   circuit and labelled with its name.

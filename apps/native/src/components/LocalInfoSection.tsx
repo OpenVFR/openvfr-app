@@ -6,7 +6,7 @@
 import React, { useState } from 'react'
 import { Linking, Text, TouchableOpacity, View, StyleSheet } from 'react-native'
 import {
-  DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, orbitLabel,
+  DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, orbitLabel, unstatedCircuitEnds, unstatedCircuitNote,
   type DetailProvenance, type LocalInfo, type RuleGroup,
 } from '@open-vfr/shared/aerodromeDetails'
 import { useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -75,7 +75,10 @@ export default function LocalInfoSection({ info }: { info: LocalInfo | undefined
   return (
     <Section title="Local information">
       {info.circuits.length > 0 && (
-        <Block title="Circuits" prov={pv['circuits']} styles={styles}>{lines(info.circuits.map(formatCircuit))}</Block>
+        <Block title="Circuits" prov={pv['circuits']} styles={styles}>
+          {lines(info.circuits.map(formatCircuit))}
+          {unstatedCircuitEnds(info).length > 0 && <Text style={styles.sub}>{unstatedCircuitNote(unstatedCircuitEnds(info))}</Text>}
+        </Block>
       )}
       {info.localRules.length > 0 && (
         <Block title="Local rules" prov={pv['local_rules']} styles={styles}>

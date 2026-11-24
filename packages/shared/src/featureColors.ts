@@ -93,7 +93,7 @@ import type { CircuitGroup, DetailKind } from './aerodromeDetails'
 /** One colour per aircraft group's circuit (a club map draws them in different colours too). */
 export const CIRCUIT_GROUP_COLOR: Record<CircuitGroup, string> = {
   powered: '#38bdf8',
-  glider: '#22c55e',
+  glider: '#16a34a',
   ultralight: '#f97316',
   helicopter: '#a855f7',
   gyro: '#eab308',

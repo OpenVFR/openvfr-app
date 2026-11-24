@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   parseAerodromeDetails, localInfo, formatCircuit, formatLimits, circuitTurnArrow, schematicCircuitFeatures, hasLocalInfo, holdingOrbit,
   holdingOrbitFeatures, ORBIT_RADIUS_NM, localAreaInfo, RULE_GROUP_IDS, RULE_GROUP_LABEL,
-  TURN_STRAIGHT_NM, TURN_RADIUS_NM, type DetailFeature,
+  TURN_STRAIGHT_NM, TURN_RADIUS_NM, endsOfDesignator, runwayEndsOf, unstatedCircuitEnds, unstatedCircuitNote, type DetailFeature,
 } from './aerodromeDetails'
 import type { LineString } from 'geojson'
 
@@ -221,5 +221,36 @@ describe('grouped local rules', () => {
   })
   it('accepts the JSON string MapLibre makes of a nested property', () => {
     expect(localInfo({ local_rule_groups: JSON.stringify(many) }).localRuleGroups).toHaveLength(6)
+  })
+})
+
+describe('circuit note: runways without a published circuit', () => {
+  it('names the two ends of a designator, also a one-end one and a side letter', () => {
+    expect(endsOfDesignator('12/30')).toEqual(['12', '30'])
+    expect(endsOfDesignator('18')).toEqual(['18', '36'])
+    expect(endsOfDesignator('36')).toEqual(['36', '18'])
+    expect(endsOfDesignator('04L')).toEqual(['04L', '22R'])
+    expect(endsOfDesignator('GRASS')).toEqual([])
+  })
+
+  it('lists every runway end once, from the thresholds when it has them', () => {
+    expect(runwayEndsOf([{ designator: '14/32' }, { designator: '04/22' }, { designator: '14/32' }])).toEqual(['14', '32', '04', '22'])
+    expect(runwayEndsOf(RWYS)).toEqual(['12', '30'])
+  })
+
+  it('says which ends are not stated only when some circuit is published (ESTA: RWY 32 only)', () => {
+    const info = (circuits: { runway: string; aircraft?: string | null }[]) => ({
+      runwayEnds: ['14', '32', '04', '22'],
+      circuits: circuits.map(c => ({ runway: c.runway, direction: 'right' as const, altitude_ft: null, altitude_ref: null, aircraft: c.aircraft ?? null })),
+    })
+    expect(unstatedCircuitEnds(info([{ runway: '32' }]))).toEqual(['14', '04', '22'])
+    expect(unstatedCircuitEnds(info([]))).toEqual([])                                    // nothing published: no note, no block
+    expect(unstatedCircuitEnds(info([{ runway: '32', aircraft: 'heavy' }]))).toEqual([])  // a circuit for heavy aircraft only does not count as published
+    expect(unstatedCircuitEnds(info([{ runway: 'RWY 14L' }]))).toEqual(['32', '04', '22'])
+    expect(unstatedCircuitNote(['14', '04'])).toBe('Not stated for RWY 14, 04. The ICAO standard is left-hand unless published otherwise.')
+  })
+
+  it('localInfo carries the runway ends', () => {
+    expect(localInfo({ runways: [{ designator: '12/30' }], circuits: [] }).runwayEnds).toEqual(['12', '30'])
   })
 })

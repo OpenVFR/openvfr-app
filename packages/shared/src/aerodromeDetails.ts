@@ -244,6 +244,8 @@ export interface RuleGroup {
 
 export interface LocalInfo {
   circuits: CircuitInfo[]
+  /** The runway ends the aerodrome has ("12", "30", "04L"): what a circuit note can say is not stated. */
+  runwayEnds: string[]
   localRules: string[]
   /** The same rules grouped, or null (no tidy version: show `localRules` as a plain list). */
   localRuleGroups: RuleGroup[] | null
@@ -334,7 +336,7 @@ export function localInfo(props: Record<string, unknown>): LocalInfo {
     }
   }
   return {
-    circuits, areas, reportingPoints, holdings, provenance,
+    circuits, areas, reportingPoints, holdings, provenance, runwayEnds: runwayEndsOf(list(props['runways']) as RunwayLike[]),
     localRules: strings(props['local_rules']),
     localRuleGroups: ruleGroups(props['local_rule_groups']),
     hoursRemarks: strings(props['hours_remarks']),
@@ -349,6 +351,45 @@ const AIRCRAFT_LABEL: Record<string, string> = { heavy: 'aircraft over 5700 kg M
 
 /** Circuits only for heavy aircraft are listed, not drawn: a light-aircraft pilot would read them as theirs. */
 export const isDrawnCircuit = (c: CircuitInfo): boolean => c.aircraft !== 'heavy'
+
+const SUFFIX_FLIP: Record<string, string> = { L: 'R', R: 'L', C: 'C', '': '' }
+
+/** The two ends a runway designator names: "12/30" -> 12, 30; "18" -> 18, 36; "04L" -> 04L, 22R. Nothing for a designator that is not one. */
+export function endsOfDesignator(d: unknown): string[] {
+  const s = String(d ?? '').trim().toUpperCase()
+  const pair = /^(\d{2})([LRC]?)\s*\/\s*(\d{2})([LRC]?)$/.exec(s)
+  if (pair) return [pair[1]! + pair[2]!, pair[3]! + pair[4]!]
+  const one = /^(\d{2})([LRC]?)$/.exec(s)
+  if (!one) return []
+  const n = Number(one[1])
+  const other = ((n + 17) % 36) + 1
+  return [one[1]! + one[2]!, String(other).padStart(2, '0') + SUFFIX_FLIP[one[2]!]!]
+}
+
+/** Every runway end of an aerodrome's runway list, in order, once each. */
+export function runwayEndsOf(runways: readonly RunwayLike[]): string[] {
+  const out: string[] = []
+  for (const r of runways) {
+    const fromThresholds = ths(r).map(t => String(t.designator ?? '').trim().toUpperCase()).filter(d => /^\d{2}[LRC]?$/.test(d))
+    for (const e of fromThresholds.length === 2 ? fromThresholds : endsOfDesignator(r.designator)) if (!out.includes(e)) out.push(e)
+  }
+  return out
+}
+
+/**
+ * What the circuit note says is NOT stated: the runway ends with no published circuit (for light aircraft: a circuit only for heavy aircraft does not count), when at least one circuit is published at
+ * the aerodrome. Without any published circuit there is no note (the block is not shown). A direction nobody published is never drawn: the standard is only named.
+ */
+export function unstatedCircuitEnds(i: Pick<LocalInfo, 'circuits' | 'runwayEnds'>): string[] {
+  const stated = new Set(i.circuits.filter(isDrawnCircuit).map(c => c.runway.toUpperCase().replace(/^RWY\s*/, '').replace(/[LRC]$/, '').trim()))
+  if (!stated.size) return []
+  return i.runwayEnds.filter(e => !stated.has(e.replace(/[LRC]$/, '')))
+}
+
+/** The line under the circuit list for runways without a published circuit. */
+export function unstatedCircuitNote(ends: readonly string[]): string {
+  return `Not stated for RWY ${ends.join(', ')}. The ICAO standard is left-hand unless published otherwise.`
+}
 
 /** "RWY 12 · left-hand · 1300 ft · ultralight". */
 export function formatCircuit(c: CircuitInfo): string {

@@ -7,7 +7,7 @@
  */
 import { useState } from 'react'
 import {
-  DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, orbitLabel, type DetailProvenance,
+  DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, orbitLabel, unstatedCircuitEnds, unstatedCircuitNote, type DetailProvenance,
   type LocalInfo, type RuleGroup,
 } from '@open-vfr/shared/aerodromeDetails'
 import { useLocalInfo } from '../utils/aerodromeDetails'
@@ -80,6 +80,7 @@ function Content({ info }: { info: LocalInfo }) {
       {info.circuits.length > 0 && (
         <Block title="Circuits" prov={pv['circuits']}>
           <ul className={css.list}>{info.circuits.map((c, i) => <li key={i}>{formatCircuit(c)}</li>)}</ul>
+          {unstatedCircuitEnds(info).length > 0 && <div className={css.sub}>{unstatedCircuitNote(unstatedCircuitEnds(info))}</div>}
         </Block>
       )}
       {info.localRules.length > 0 && (
