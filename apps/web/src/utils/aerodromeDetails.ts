@@ -8,7 +8,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { Feature, FeatureCollection, Geometry } from 'geojson'
 import {
-  parseAerodromeDetails, localInfo,
+  parseAerodromeDetails, localInfo, circuitNotes,
   type DetailProps, type LocalInfo,
 } from '@open-vfr/shared/aerodromeDetails'
 import { countryFileUrlReady, countryDatasetFile, loadCountryGeojson } from '@open-vfr/shared/countryData'
@@ -78,6 +78,23 @@ export function useLocalInfo(icao: string | undefined, enabled: boolean): LocalI
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [icao, enabled, key, preview])
   return info
+}
+
+/** The notes the sources give an aerodrome's drawn circuits, for the card (empty without a details file). */
+export function useCircuitNotes(icao: string | undefined, enabled: boolean): string[] {
+  const { countries, key } = useActiveCountries()
+  const preview = useUnreviewedShown()
+  const [notes, setNotes] = useState<string[]>([])
+  useEffect(() => {
+    setNotes([])
+    if (!enabled || !icao) return
+    let cancelled = false
+    Promise.all(countries.map(c => loadAerodromeDetails(c, preview).catch(() => null)))
+      .then(all => { if (!cancelled) setNotes(circuitNotes(all.flatMap(d => d?.features ?? []), icao)) })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [icao, enabled, key, preview])
+  return notes
 }
 
 // ── Circuit focus: the runway end tapped in the aerodrome popup ────────────────

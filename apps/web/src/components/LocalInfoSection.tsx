@@ -10,7 +10,7 @@ import {
   DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, orbitLabel, unstatedCircuitEnds, unstatedCircuitNote, circuitEndGroups, type DetailProvenance,
   type LocalInfo, type RuleGroup,
 } from '@open-vfr/shared/aerodromeDetails'
-import { useLocalInfo } from '../utils/aerodromeDetails'
+import { useCircuitNotes, useLocalInfo } from '../utils/aerodromeDetails'
 import css from './LocalInfoSection.module.css'
 
 interface Props {
@@ -74,7 +74,7 @@ function RuleGroups({ groups }: { groups: RuleGroup[] }) {
 }
 
 /** Circuits per runway end, the height once when it is the same everywhere, and which runways have none stated. */
-function CircuitList({ info }: { info: LocalInfo }) {
+function CircuitList({ info, notes }: { info: LocalInfo; notes: string[] }) {
   const { summary, ends } = circuitEndGroups(info.circuits)
   const none = unstatedCircuitEnds(info)
   return (
@@ -83,19 +83,20 @@ function CircuitList({ info }: { info: LocalInfo }) {
         {ends.map(e => <li key={e.runway}><b>RWY {e.runway}</b> {e.entries.map(x => x.text).join('; ')}</li>)}
       </ul>
       {summary && <div className={css.sub}>{summary}</div>}
+      {notes.map(n => <div key={n} className={css.sub}>{n}</div>)}
       {none.length > 0 && <div className={css.sub}>{unstatedCircuitNote(none)}</div>}
       <div className={css.sub}>Shown on the map when zoomed in.</div>
     </>
   )
 }
 
-function Content({ info }: { info: LocalInfo }) {
+function Content({ info, notes }: { info: LocalInfo; notes: string[] }) {
   const pv = info.provenance
   return (
     <>
       {info.circuits.length > 0 && (
         <Block title="Circuits" prov={pv['circuits']}>
-          <CircuitList info={info} />
+          <CircuitList info={info} notes={notes} />
           {unstatedCircuitEnds(info).length > 0 && <div className={css.sub}>{unstatedCircuitNote(unstatedCircuitEnds(info))}</div>}
         </Block>
       )}
@@ -148,11 +149,12 @@ function Content({ info }: { info: LocalInfo }) {
 
 export default function LocalInfoSection({ icao, sectionClass, titleClass }: Props) {
   const info = useLocalInfo(icao, true)
+  const notes = useCircuitNotes(icao, true)
   if (!info || !hasLocalInfo(info)) return null
   return (
     <div className={sectionClass}>
       <div className={titleClass}>Local information</div>
-      <Content info={info} />
+      <Content info={info} notes={notes} />
       <div className={css.note}>Always check the official publication.</div>
     </div>
   )

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   parseAerodromeDetails, localInfo, formatCircuit, formatLimits, circuitTurnArrow, schematicCircuitFeatures, hasLocalInfo, holdingOrbit,
   holdingOrbitFeatures, ORBIT_RADIUS_NM, localAreaInfo, RULE_GROUP_IDS, RULE_GROUP_LABEL,
-  TURN_STRAIGHT_NM, TURN_RADIUS_NM, endsOfDesignator, runwayEndsOf, circuitEndGroups, unstatedCircuitEnds, unstatedCircuitNote, type DetailFeature,
+  TURN_STRAIGHT_NM, TURN_RADIUS_NM, endsOfDesignator, runwayEndsOf, circuitEndGroups, circuitNotes, unstatedCircuitEnds, unstatedCircuitNote, type DetailFeature,
 } from './aerodromeDetails'
 import type { LineString } from 'geojson'
 
@@ -277,5 +277,22 @@ describe('circuitEndGroups', () => {
     const g = circuitEndGroups([c('RWY 18', null, null), c('18', null, null)])
     expect(g.ends).toHaveLength(1)
     expect(g.ends[0]!.entries).toEqual([{ direction: null, text: 'direction not stated' }])
+  })
+})
+
+describe('circuit heights and notes', () => {
+  it('says when a height has no reference instead of leaving it bare', () => {
+    const g = circuitEndGroups([{ runway: '12', direction: 'left', altitude_ft: 1000, altitude_ref: null, aircraft: null }])
+    expect(g.ends[0]!.entries[0]!.text).toBe('\u21B6 left-hand \u00B7 1000 ft (reference not stated)')
+  })
+
+  it('lists the notes of drawn circuits once, with the circuit name, and not those of arrows or other aerodromes', () => {
+    const f = (aerodrome: string, remarks: string | null, schematic = false, type: 'LineString' | 'Point' = 'LineString'): DetailFeature => ({
+      type: 'Feature',
+      geometry: type === 'LineString' ? { type: 'LineString', coordinates: [[13, 55], [13.1, 55.1]] } : { type: 'Point', coordinates: [13, 55] },
+      properties: { aerodrome, kind: 'circuit_leg', name: 'Traffic circuit gliders (runway 12)', remarks, schematic } as DetailFeature['properties'],
+    })
+    expect(circuitNotes([f('ESMI', 'At least 150 m AGL on downwind.'), f('ESMI', 'At least 150 m AGL on downwind.'), f('ESMI', null), f('ESMI', 'x', true), f('ESXX', 'y')], 'ESMI'))
+      .toEqual(['Traffic circuit gliders (runway 12): At least 150 m AGL on downwind.'])
   })
 })

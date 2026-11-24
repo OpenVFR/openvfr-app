@@ -394,7 +394,20 @@ export function unstatedCircuitNote(ends: readonly string[]): string {
 export interface CircuitEntry { direction: 'left' | 'right' | null; text: string }
 export interface CircuitEndGroup { runway: string; entries: CircuitEntry[] }
 
-const heightOf = (c: CircuitInfo): string | null => (c.altitude_ft ? `${c.altitude_ft} ft${c.altitude_ref ? ` ${c.altitude_ref}` : ''}` : null)
+/** A height with its reference; a source that gives none is said so ("1000 ft (reference not stated)"): a bare height is ambiguous (above the field or above sea level) and no reference is guessed. */
+const heightOf = (c: CircuitInfo): string | null => (c.altitude_ft ? `${c.altitude_ft} ft${c.altitude_ref ? ` ${c.altitude_ref}` : ' (reference not stated)'}` : null)
+
+/** The notes the source gives a drawn circuit ("At least 150 m AGL on downwind"), each with the circuit's name, once. The card shows them under the circuit list. */
+export function circuitNotes(features: readonly DetailFeature[], aerodrome: string): string[] {
+  const out: string[] = []
+  for (const f of features) {
+    const p = f.properties
+    if (p.aerodrome !== aerodrome || p.kind !== 'circuit_leg' || p.schematic || f.geometry.type !== 'LineString' || !p.remarks) continue
+    const line = p.name ? `${p.name}: ${p.remarks}` : p.remarks
+    if (!out.includes(line)) out.push(line)
+  }
+  return out
+}
 const HAND_GLYPH = { left: '\u21B6', right: '\u21B7' } as const
 
 /**

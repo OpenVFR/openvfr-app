@@ -3,14 +3,15 @@
  * rules, hours, areas, holding points with their orbit, reporting points -- each with every source it came from and
  * an "unreviewed" mark in preview data. Same content as web's LocalInfoSection.tsx.
  */
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Linking, Text, TouchableOpacity, View, StyleSheet } from 'react-native'
 import {
-  DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, orbitLabel, unstatedCircuitEnds, unstatedCircuitNote, circuitEndGroups,
+  DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, orbitLabel, unstatedCircuitEnds, unstatedCircuitNote, circuitEndGroups, circuitNotes, parseAerodromeDetails,
   type DetailProvenance, type LocalInfo, type RuleGroup,
 } from '@open-vfr/shared/aerodromeDetails'
 import { useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { Section } from './AerodromeBriefShared'
+import { loadAssetJson } from '../utils/offlineCache'
 
 function Sources({ p, styles }: { p?: DetailProvenance; styles: ReturnType<typeof makeStyles> }) {
   if (!p) return null
@@ -67,8 +68,18 @@ function RuleGroups({ groups, styles }: { groups: RuleGroup[]; styles: ReturnTyp
   )
 }
 
-export default function LocalInfoSection({ info }: { info: LocalInfo | undefined }) {
+export default function LocalInfoSection({ info, icao }: { info: LocalInfo | undefined; icao?: string }) {
   const styles = useThemedStyles(makeStyles)
+  const [notes, setNotes] = useState<string[]>([])
+  useEffect(() => {
+    setNotes([])
+    if (!icao) return
+    let cancelled = false
+    loadAssetJson('aerodromeDetails')
+      .then(j => { if (!cancelled) setNotes(circuitNotes(parseAerodromeDetails(j)?.features ?? [], icao)) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [icao])
   if (!info || !hasLocalInfo(info)) return null
   const pv = info.provenance
   const lines = (xs: string[]) => xs.map((x, i) => <Text key={i} style={styles.item}>{x}</Text>)
@@ -78,6 +89,7 @@ export default function LocalInfoSection({ info }: { info: LocalInfo | undefined
         <Block title="Circuits" prov={pv['circuits']} styles={styles}>
           {circuitEndGroups(info.circuits).ends.map(e => <Text key={e.runway} style={styles.item}>RWY {e.runway}  {e.entries.map(x => x.text).join('; ')}</Text>)}
           {circuitEndGroups(info.circuits).summary && <Text style={styles.sub}>{circuitEndGroups(info.circuits).summary}</Text>}
+          {notes.map(n => <Text key={n} style={styles.sub}>{n}</Text>)}
           {unstatedCircuitEnds(info).length > 0 && <Text style={styles.sub}>{unstatedCircuitNote(unstatedCircuitEnds(info))}</Text>}
           <Text style={styles.sub}>Shown on the map when zoomed in.</Text>
         </Block>

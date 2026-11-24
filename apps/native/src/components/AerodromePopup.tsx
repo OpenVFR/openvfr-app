@@ -463,7 +463,7 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
                 </Section>
               )}
 
-              <LocalInfoSection info={feature?.local} />
+              <LocalInfoSection info={feature?.local} icao={feature?.icao} />
 
               <ChartsSection icao={feature?.icao} onShowOnMap={onClose} />
 
