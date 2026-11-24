@@ -41,7 +41,11 @@ const CIRCUIT_LABEL_FONT = ['Noto Sans Medium']
 const CIRCUIT_LABEL_COLOR = '#0c4a6e'
 const AREA_LABEL_COLOR = '#1f2937'
 const CIRCUIT_LABEL_SIZE: Expr = ['interpolate', ['linear'], ['zoom'], 11.5, 12, 14, 14]
-const CIRCUIT_WIDTH: Expr = ['interpolate', ['linear'], ['zoom'], 9.5, 1, 12, 2.5, 15, 3.5]
+// A circuit for gliders, ultralights, helicopters or gyros is drawn thinner than the one for ordinary powered aircraft, so the main one stands out where several overlap.
+const SECONDARY: Expr = ['in', ['get', 'aircraft'], ['literal', ['glider', 'ultralight', 'helicopter', 'gyro']]]
+const THIN = 0.7
+const CIRCUIT_WIDTH: Expr = ['interpolate', ['linear'], ['zoom'],
+  9.5, ['case', SECONDARY, 1 * THIN, 1], 12, ['case', SECONDARY, 2.5 * THIN, 2.5], 15, ['case', SECONDARY, 3.5 * THIN, 3.5]]
 const HALO = 'rgba(255,255,255,0.92)'
 
 const COLOR: Expr = ['match', ['get', 'kind'],
@@ -92,7 +96,8 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
   { id: 'ad-circuit-turn', type: 'line', group: 'circuits', minzoom: DIRECTION_ZOOM,
     filter: ['all', LINE, IS_CIRCUIT, ['==', ['get', 'role'], 'turn']],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': CIRCUIT_COLOR, 'line-width': CIRCUIT_WIDTH, 'line-opacity': ['case', ['get', 'pending'], 0.7, 1] } },
+    // orientation only (a direction, no surveyed path): visibly fainter than a drawn circuit
+    paint: { 'line-color': CIRCUIT_COLOR, 'line-width': CIRCUIT_WIDTH, 'line-opacity': ['case', ['get', 'pending'], 0.45, 0.6] } },
   // chevrons along drawn legs, unless the pattern is flown both ways (its label names both runway directions)
   { id: 'ad-circuit-chevrons', type: 'symbol', group: 'circuits', minzoom: DIRECTION_ZOOM,
     filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!=', ['get', 'oneWay'], false]],

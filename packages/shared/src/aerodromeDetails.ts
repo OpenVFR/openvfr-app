@@ -391,6 +391,36 @@ export function unstatedCircuitNote(ends: readonly string[]): string {
   return `Not stated for RWY ${ends.join(', ')}. The ICAO standard is left-hand unless published otherwise.`
 }
 
+export interface CircuitEntry { direction: 'left' | 'right' | null; text: string }
+export interface CircuitEndGroup { runway: string; entries: CircuitEntry[] }
+
+const heightOf = (c: CircuitInfo): string | null => (c.altitude_ft ? `${c.altitude_ft} ft${c.altitude_ref ? ` ${c.altitude_ref}` : ''}` : null)
+const HAND_GLYPH = { left: '\u21B6', right: '\u21B7' } as const
+
+/**
+ * The circuits of an aerodrome grouped by runway end (in runway order), each entry "↶ left-hand · gliders", for the card. When two or more circuits give a height and all give the same one, the
+ * height is stated once in `summary` ("Circuit height 1300 ft QNH") and left off the entries; otherwise each entry carries its own. Circuits for heavy aircraft only are listed (they are not drawn).
+ */
+export function circuitEndGroups(circuits: readonly CircuitInfo[]): { summary: string | null; ends: CircuitEndGroup[] } {
+  const heights = circuits.map(heightOf).filter((h): h is string => !!h)
+  const shared = heights.length >= 2 && new Set(heights).size === 1 ? heights[0]! : null
+  const by = new Map<string, CircuitEntry[]>()
+  for (const c of circuits) {
+    const runway = c.runway.toUpperCase().replace(/^RWY\s*/, '').trim()
+    const text = [
+      c.direction ? `${HAND_GLYPH[c.direction]} ${c.direction}-hand` : 'direction not stated',
+      shared ? null : heightOf(c),
+      c.aircraft ? (AIRCRAFT_LABEL[c.aircraft] ?? c.aircraft) : null,
+    ].filter(Boolean).join(' \u00B7 ')
+    const list = by.get(runway) ?? []
+    if (!list.some(e => e.text === text)) list.push({ direction: c.direction, text })
+    by.set(runway, list)
+  }
+  const ends = [...by.entries()].map(([runway, entries]) => ({ runway, entries }))
+    .sort((a, b) => (parseInt(a.runway, 10) || 99) - (parseInt(b.runway, 10) || 99) || a.runway.localeCompare(b.runway))
+  return { summary: shared ? `Circuit height ${shared}` : null, ends }
+}
+
 /** "RWY 12 · left-hand · 1300 ft · ultralight". */
 export function formatCircuit(c: CircuitInfo): string {
   return [

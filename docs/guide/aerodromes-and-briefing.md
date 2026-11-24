@@ -70,6 +70,13 @@ them (from zoom 9, with more detail as you zoom in):
   have none stated ("Not stated for RWY 14, 04, 22. The ICAO standard is
   left-hand unless published otherwise."). No arrow is drawn for a runway
   nobody published a direction for.
+  The **Circuits** list in the card is grouped by runway end, with a
+  turn glyph for each hand ("RWY 12 ↶ left-hand; ↷ right-hand · gliders"),
+  and states the circuit height once when it is the same everywhere. A
+  turn arrow, which only gives the direction, is drawn fainter than a
+  drawn circuit; circuits for gliders, ultralights, helicopters and
+  gyros are drawn thinner than the one for ordinary powered aircraft, so
+  the main circuit stands out where several overlap.
 - **Fly-in routes**: an arrival route a club draws on its own map (for
   example the way to join from the north) is drawn and switched like a
   circuit and labelled with its name.

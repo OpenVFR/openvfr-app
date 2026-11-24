@@ -7,7 +7,7 @@
  */
 import { useState } from 'react'
 import {
-  DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, orbitLabel, unstatedCircuitEnds, unstatedCircuitNote, type DetailProvenance,
+  DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, orbitLabel, unstatedCircuitEnds, unstatedCircuitNote, circuitEndGroups, type DetailProvenance,
   type LocalInfo, type RuleGroup,
 } from '@open-vfr/shared/aerodromeDetails'
 import { useLocalInfo } from '../utils/aerodromeDetails'
@@ -73,13 +73,29 @@ function RuleGroups({ groups }: { groups: RuleGroup[] }) {
   )
 }
 
+/** Circuits per runway end, the height once when it is the same everywhere, and which runways have none stated. */
+function CircuitList({ info }: { info: LocalInfo }) {
+  const { summary, ends } = circuitEndGroups(info.circuits)
+  const none = unstatedCircuitEnds(info)
+  return (
+    <>
+      <ul className={css.list}>
+        {ends.map(e => <li key={e.runway}><b>RWY {e.runway}</b> {e.entries.map(x => x.text).join('; ')}</li>)}
+      </ul>
+      {summary && <div className={css.sub}>{summary}</div>}
+      {none.length > 0 && <div className={css.sub}>{unstatedCircuitNote(none)}</div>}
+      <div className={css.sub}>Shown on the map when zoomed in.</div>
+    </>
+  )
+}
+
 function Content({ info }: { info: LocalInfo }) {
   const pv = info.provenance
   return (
     <>
       {info.circuits.length > 0 && (
         <Block title="Circuits" prov={pv['circuits']}>
-          <ul className={css.list}>{info.circuits.map((c, i) => <li key={i}>{formatCircuit(c)}</li>)}</ul>
+          <CircuitList info={info} />
           {unstatedCircuitEnds(info).length > 0 && <div className={css.sub}>{unstatedCircuitNote(unstatedCircuitEnds(info))}</div>}
         </Block>
       )}

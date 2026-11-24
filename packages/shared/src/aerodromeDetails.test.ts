@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   parseAerodromeDetails, localInfo, formatCircuit, formatLimits, circuitTurnArrow, schematicCircuitFeatures, hasLocalInfo, holdingOrbit,
   holdingOrbitFeatures, ORBIT_RADIUS_NM, localAreaInfo, RULE_GROUP_IDS, RULE_GROUP_LABEL,
-  TURN_STRAIGHT_NM, TURN_RADIUS_NM, endsOfDesignator, runwayEndsOf, unstatedCircuitEnds, unstatedCircuitNote, type DetailFeature,
+  TURN_STRAIGHT_NM, TURN_RADIUS_NM, endsOfDesignator, runwayEndsOf, circuitEndGroups, unstatedCircuitEnds, unstatedCircuitNote, type DetailFeature,
 } from './aerodromeDetails'
 import type { LineString } from 'geojson'
 
@@ -252,5 +252,30 @@ describe('circuit note: runways without a published circuit', () => {
 
   it('localInfo carries the runway ends', () => {
     expect(localInfo({ runways: [{ designator: '12/30' }], circuits: [] }).runwayEnds).toEqual(['12', '30'])
+  })
+})
+
+describe('circuitEndGroups', () => {
+  const c = (runway: string, direction: 'left' | 'right' | null, altitude_ft: number | null, aircraft: string | null = null) =>
+    ({ runway, direction, altitude_ft, altitude_ref: altitude_ft ? 'QNH' : null, aircraft })
+
+  it('groups by runway end in runway order and states a shared height once', () => {
+    const g = circuitEndGroups([c('30', 'right', 1300), c('12', 'left', 1300), c('12', 'right', 1300, 'glider')])
+    expect(g.summary).toBe('Circuit height 1300 ft QNH')
+    expect(g.ends.map(e => e.runway)).toEqual(['12', '30'])
+    expect(g.ends[0]!.entries.map(e => e.text)).toEqual(['\u21B6 left-hand', '\u21B7 right-hand \u00B7 glider'])
+  })
+
+  it('keeps each height on its own entry when they differ, and with a single circuit', () => {
+    const g = circuitEndGroups([c('12', 'left', 1000), c('30', 'right', 1300)])
+    expect(g.summary).toBeNull()
+    expect(g.ends[1]!.entries[0]!.text).toBe('\u21B7 right-hand \u00B7 1300 ft QNH')
+    expect(circuitEndGroups([c('04', 'left', 1200)]).ends[0]!.entries[0]!.text).toBe('\u21B6 left-hand \u00B7 1200 ft QNH')
+  })
+
+  it('says when a direction is not stated and drops an identical repeat', () => {
+    const g = circuitEndGroups([c('RWY 18', null, null), c('18', null, null)])
+    expect(g.ends).toHaveLength(1)
+    expect(g.ends[0]!.entries).toEqual([{ direction: null, text: 'direction not stated' }])
   })
 })

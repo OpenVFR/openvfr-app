@@ -6,7 +6,7 @@
 import React, { useState } from 'react'
 import { Linking, Text, TouchableOpacity, View, StyleSheet } from 'react-native'
 import {
-  DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, orbitLabel, unstatedCircuitEnds, unstatedCircuitNote,
+  DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, orbitLabel, unstatedCircuitEnds, unstatedCircuitNote, circuitEndGroups,
   type DetailProvenance, type LocalInfo, type RuleGroup,
 } from '@open-vfr/shared/aerodromeDetails'
 import { useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -76,8 +76,10 @@ export default function LocalInfoSection({ info }: { info: LocalInfo | undefined
     <Section title="Local information">
       {info.circuits.length > 0 && (
         <Block title="Circuits" prov={pv['circuits']} styles={styles}>
-          {lines(info.circuits.map(formatCircuit))}
+          {circuitEndGroups(info.circuits).ends.map(e => <Text key={e.runway} style={styles.item}>RWY {e.runway}  {e.entries.map(x => x.text).join('; ')}</Text>)}
+          {circuitEndGroups(info.circuits).summary && <Text style={styles.sub}>{circuitEndGroups(info.circuits).summary}</Text>}
           {unstatedCircuitEnds(info).length > 0 && <Text style={styles.sub}>{unstatedCircuitNote(unstatedCircuitEnds(info))}</Text>}
+          <Text style={styles.sub}>Shown on the map when zoomed in.</Text>
         </Block>
       )}
       {info.localRules.length > 0 && (
