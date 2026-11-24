@@ -418,18 +418,21 @@ export function circuitEndGroups(circuits: readonly CircuitInfo[]): { summary: s
   const heights = circuits.map(heightOf).filter((h): h is string => !!h)
   const shared = heights.length >= 2 && new Set(heights).size === 1 ? heights[0]! : null
   const by = new Map<string, CircuitEntry[]>()
+  const groupedEnds = new Set(circuits.filter(c => c.aircraft).map(c => c.runway.toUpperCase().replace(/^RWY\s*/, '').trim()))
   for (const c of circuits) {
     const runway = c.runway.toUpperCase().replace(/^RWY\s*/, '').trim()
     const text = [
       c.direction ? `${HAND_GLYPH[c.direction]} ${c.direction}-hand` : 'direction not stated',
       shared ? null : heightOf(c),
-      c.aircraft ? (AIRCRAFT_LABEL[c.aircraft] ?? c.aircraft) : null,
+      // at an end where another circuit names its aircraft, the one that names none is for all the others
+      c.aircraft ? (AIRCRAFT_LABEL[c.aircraft] ?? c.aircraft) : groupedEnds.has(runway) ? 'other aircraft' : null,
     ].filter(Boolean).join(' \u00B7 ')
     const list = by.get(runway) ?? []
     if (!list.some(e => e.text === text)) list.push({ direction: c.direction, text })
     by.set(runway, list)
   }
   const ends = [...by.entries()].map(([runway, entries]) => ({ runway, entries }))
+    .map(e => ({ ...e, entries: [...e.entries].sort((a, b) => Number(/other aircraft/.test(a.text)) - Number(/other aircraft/.test(b.text))) }))      // the general circuit last
     .sort((a, b) => (parseInt(a.runway, 10) || 99) - (parseInt(b.runway, 10) || 99) || a.runway.localeCompare(b.runway))
   return { summary: shared ? `Circuit height ${shared}` : null, ends }
 }

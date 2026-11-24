@@ -263,7 +263,7 @@ describe('circuitEndGroups', () => {
     const g = circuitEndGroups([c('30', 'right', 1300), c('12', 'left', 1300), c('12', 'right', 1300, 'glider')])
     expect(g.summary).toBe('Circuit height 1300 ft QNH')
     expect(g.ends.map(e => e.runway)).toEqual(['12', '30'])
-    expect(g.ends[0]!.entries.map(e => e.text)).toEqual(['\u21B6 left-hand', '\u21B7 right-hand \u00B7 glider'])
+    expect(g.ends[0]!.entries.map(e => e.text)).toEqual(['\u21B7 right-hand \u00B7 glider', '\u21B6 left-hand \u00B7 other aircraft'])
   })
 
   it('keeps each height on its own entry when they differ, and with a single circuit', () => {
