@@ -85,9 +85,13 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
     filter: ['all', LINE, NOT_CIRCUIT, ['!', IS_HOLDING], DASHED],
     layout: { 'line-join': 'round' }, paint: { 'line-color': COLOR, 'line-width': 1.8, 'line-dasharray': [2, 2] } },
   // Circuits ("Traffic circuits"): a white casing under each drawn leg, so a circuit reads on green land and beside amber areas
-  { id: 'ad-circuit-casing', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN],
+  { id: 'ad-circuit-casing', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!', DASHED]],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#ffffff', 'line-opacity': 0.85, 'line-width': ['interpolate', ['linear'], ['zoom'], 9.5, 2.4, 12, 4.9, 15, 5.9] } },
+  // a dashed (approximate or unreviewed) circuit gets a casing with the same dashes, so the gaps show the map and it does not read as a line on a white band
+  { id: 'ad-circuit-casing-dashed', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN, DASHED],
+    layout: { 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-opacity': 0.85, 'line-width': ['interpolate', ['linear'], ['zoom'], 9.5, 2.4, 12, 4.9, 15, 5.9], 'line-dasharray': [1.2, 0.9] } },
   { id: 'ad-circuit-line', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!', DASHED]],
     layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': CIRCUIT_COLOR, 'line-width': CIRCUIT_WIDTH } },
   { id: 'ad-circuit-line-dashed', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN, DASHED],
