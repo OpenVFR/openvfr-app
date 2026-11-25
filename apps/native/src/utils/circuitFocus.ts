@@ -13,4 +13,7 @@ export function setCircuitFocus(f: CircuitFocus | null): void {
   store.set(f)
 }
 
+/** The runway end chosen now, or null (for code that is not a component). */
+export const getCircuitFocus = (): CircuitFocus | null => store.get()
+
 export const useCircuitFocus = (): CircuitFocus | null => useStoreValue(store)

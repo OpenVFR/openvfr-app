@@ -79,7 +79,7 @@ import { overlayGeometry } from '@open-vfr/shared/chartsIndex'
 import { cornersBounds } from '@open-vfr/shared/chartDocument'
 import { getChartUiState, useChartFitToken } from '../utils/charts'
 import { buildDetailsMapData, staticColorLayers, layerFilter, isDrawnClubPoint, LABEL_ANCHORS, landmarkLabelFilter, landmarkNamesTakenByPoints } from '@open-vfr/shared/aerodromeDetailsStyle'
-import { useCircuitFocus } from '../utils/circuitFocus'
+import { getCircuitFocus, setCircuitFocus, useCircuitFocus } from '../utils/circuitFocus'
 import { useRelevantAerodromes } from '../utils/relevantAerodrome'
 import { setCameraView, useCameraView } from '../utils/cameraView'
 import { displaceReportingPoints, displaceWaypoints, NATIVE_RADII, sameDisplacement, waypointBlockers, type Blocker } from '@open-vfr/shared/symbolDeclutter'
@@ -526,6 +526,7 @@ function buildSnapCandidates(hits: Feature[]): SnapCandidate[] {
 const EMPTY_FC: FeatureCollection = { type: 'FeatureCollection', features: [] }
 const SNAP_PX = 20
 /** Only aerodrome features carry `runways` (same test as MapScreen's isAerodrome). */
+const RUNWAY_END_TAP_PX = 22        // a finger is wider than the number: the touch box round a runway number
 const AERODROME_TAP_PROPS = (p: Record<string, unknown>) => p.runways !== undefined
 /** Half-size of the box searched for a tapped traffic symbol (the icon is small). */
 const TRAFFIC_TAP_PX = 22
@@ -3376,8 +3377,19 @@ export const AviationMap = React.memo(function AviationMap({
         routeTaps ? map.queryRenderedFeatures(boxOf(SNAP_PX), { layers: ['route-pts-circle'] }) : none,
         routeTaps && onLegPress && waypoints.length >= 2 ? map.queryRenderedFeatures(boxOf(SNAP_PX), { layers: ['route-legs-hit'] }) : none,
         map.queryRenderedFeatures(boxOf(SNAP_PX), { layers: SNAP_LAYERS }),
-      ]).then(([trafficHits, ptHits, legHits, pointHits]) => {
+        // a runway number on the map: tapping it chooses that runway end (see below)
+        planningMode ? none : map.queryRenderedFeatures(boxOf(RUNWAY_END_TAP_PX), { layers: ['runway-threshold-label'] }).catch(() => [] as Feature[]),      // fail soft: a missing layer must not break the other taps
+      ]).then(([trafficHits, ptHits, legHits, pointHits, endHits]) => {
         if (trafficHits.length > 0 && onFeatureTap) { onFeatureTap([trafficHits[0] as Feature], [ll[0], ll[1]]); return }
+        // A runway end tapped on the map: only that end's circuits are drawn (a loop flown both ways then shows its direction for it). Tapping the same end
+        // again shows all circuits; the banner on the map (MapScreen) ends it too.
+        const end = (endHits as Feature[]).find(f => typeof f.properties?.icao === 'string' && typeof f.properties?.id === 'string')
+        if (end) {
+          const aerodrome = String(end.properties!.icao), runway = String(end.properties!.id)
+          const cur = getCircuitFocus()
+          setCircuitFocus(cur?.aerodrome === aerodrome && cur.runway === runway ? null : { aerodrome, runway })
+          return
+        }
         if (routeTaps) {
           const idx = ptHits[0]?.properties?.wpIndex
           if (typeof idx === 'number' && handleRoutePoint(idx)) return
