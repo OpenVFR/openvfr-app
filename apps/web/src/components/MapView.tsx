@@ -83,6 +83,8 @@ import { useActiveCountries } from '../utils/countryData'
 import { snapIconName, formatObstacleName, formatLandmarkName, obstacleWaypointName } from '@open-vfr/shared/snapLabels'
 import { type PointFeature } from './FeaturePopup'
 import { localAreaInfo } from '@open-vfr/shared/aerodromeDetails'
+import { aerodromeId } from '@open-vfr/shared/aerodromeId'
+import { chooseRunwayEndOnMap } from '../utils/aerodromeDetails'
 import { DETAIL_TAP_EDGE_LAYERS, DETAIL_TAP_FILL_LAYERS } from '@open-vfr/shared/aerodromeDetailsStyle'
 import type { WhatsHereItem, RouteAction } from './WhatsHerePopup'
 import SnapPicker, { type SnapCandidate } from './SnapPicker'
@@ -3242,6 +3244,31 @@ export default function MapView({ auth }: { auth: AuthState }) {
       map.on('mouseleave', id, onLeave)
     })
 
+    // The aerodrome card for a tapped aerodrome symbol, or for the aerodrome of a runway end tapped on the map.
+    const openAerodromeCard = (feat: maplibregl.MapGeoJSONFeature, point: maplibregl.Point) => {
+      // Nested arrays are JSON-serialised in MapLibre GeoJSON properties.
+      const props = feat.properties as unknown as AerodromeFeatureProps
+      const geom = feat.geometry as { type: 'Point'; coordinates: [number, number] }
+      setActivePopup({
+        kind: 'aerodrome',
+        props: {
+          ...props,
+          frequencies: parseJsonProp(props.frequencies, []),
+          fuel:         parseJsonProp(props.fuel, []),
+          ppr_remarks:  parseJsonProp(props.ppr_remarks, []),
+          contacts:     parseJsonProp(props.contacts, []),
+          runways:      parseJsonProp(props.runways, []),
+          hours_of_operation:   parseJsonProp(props.hours_of_operation, []),
+          handling_facilities:  parseJsonProp(props.handling_facilities, []),
+          passenger_facilities: parseJsonProp(props.passenger_facilities, []),
+        },
+        lng: geom.coordinates[0],
+        lat: geom.coordinates[1],
+        x: point.x,
+        y: point.y,
+      })
+    }
+
     map.on('click', async (e) => {
       // Suppress click immediately following a waypoint drag-move mousedown.
       if (suppressNextClickRef.current) { suppressNextClickRef.current = false; return }
@@ -3482,6 +3509,23 @@ export default function MapView({ auth }: { auth: AuthState }) {
         }
       }
 
+      // ── 0z. A runway end (its number on the runway): choose it, so only that end's circuits are drawn. Opens the aerodrome's card, which owns the choice
+      // (a second tap on the same end clears it). Checked first: the runway number sits on the aerodrome symbol's own ground and used to open nothing.
+      if (map.getLayer('runway-threshold-label')) {
+        const rpad = 14
+        const end = map.queryRenderedFeatures([[e.point.x - rpad, e.point.y - rpad], [e.point.x + rpad, e.point.y + rpad]], { layers: ['runway-threshold-label'] })
+          .find(f => typeof f.properties?.icao === 'string' && typeof f.properties?.id === 'string')
+        if (end) {
+          const id = String(end.properties!.icao), runway = String(end.properties!.id)
+          if (!chooseRunwayEndOnMap({ aerodrome: id, runway })) {
+            const symbol = map.queryRenderedFeatures({ layers: AERODROME_LAYERS })
+              .find(f => f.geometry.type === 'Point' && aerodromeId(f.properties as Record<string, unknown>) === id)
+            if (symbol) openAerodromeCard(symbol, e.point)
+          }
+          return
+        }
+      }
+
       // ── 1. Point features (±10 px hit area, higher priority than polygons) ──
       const pad = 10
       const hitBox: [maplibregl.PointLike, maplibregl.PointLike] = [
@@ -3508,27 +3552,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         const layerId = feat.layer.id
 
         if (AERODROME_LAYERS.includes(layerId)) {
-          // Nested arrays are JSON-serialised in MapLibre GeoJSON properties.
-          const props = p as unknown as AerodromeFeatureProps
-          const geom = feat.geometry as { type: 'Point'; coordinates: [number, number] }
-          setActivePopup({
-            kind: 'aerodrome',
-            props: {
-              ...props,
-              frequencies: parseJsonProp(props.frequencies, []),
-              fuel:         parseJsonProp(props.fuel, []),
-              ppr_remarks:  parseJsonProp(props.ppr_remarks, []),
-              contacts:     parseJsonProp(props.contacts, []),
-              runways:      parseJsonProp(props.runways, []),
-              hours_of_operation:   parseJsonProp(props.hours_of_operation, []),
-              handling_facilities:  parseJsonProp(props.handling_facilities, []),
-              passenger_facilities: parseJsonProp(props.passenger_facilities, []),
-            },
-            lng: geom.coordinates[0],
-            lat: geom.coordinates[1],
-            x: e.point.x,
-            y: e.point.y,
-          })
+          openAerodromeCard(feat, e.point)
         } else if (layerId === 'navaids-vor-icon' || layerId === 'navaids-ndb-icon') {
           setActivePopup({
             kind: 'point',

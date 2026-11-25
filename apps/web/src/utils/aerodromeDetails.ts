@@ -111,6 +111,41 @@ export function setCircuitFocus(f: CircuitFocus | null): void {
   focusSubs.forEach(s => s())
 }
 
+// A tap on a runway end ON THE MAP chooses that end too. The card of that aerodrome owns the focus (it clears it when it closes or shows another aerodrome), so:
+// the card that is open for the aerodrome takes the focus at once (a second tap on the same end clears it), and for a card still to open the choice waits and
+// the card applies it when it appears.
+let mountedCard: string | null = null
+let pending: CircuitFocus | null = null
+let pendingAt = 0
+let takenAt = 0
+const RETAKE_MS = 300          // React runs a card's effect twice in development (mount, clean up, mount): the second run must find the choice too
+const PENDING_MS = 2500        // a choice whose card never opens must not apply to one opened much later
+
+/** The aerodrome card that is open now (or null): set by the card itself. */
+export function setMountedCard(id: string | null): void { mountedCard = id }
+
+/** Choose a runway end from the map. Returns true when it was applied at once (the card is open), false when it waits for the card to open. */
+export function chooseRunwayEndOnMap(f: CircuitFocus): boolean {
+  if (mountedCard === f.aerodrome) {
+    setCircuitFocus(focus?.aerodrome === f.aerodrome && focus.runway === f.runway ? null : f)
+    return true
+  }
+  pending = f
+  pendingAt = Date.now()
+  takenAt = 0
+  return false
+}
+
+/** Called by a card when it opens: the choice made on the map for its aerodrome, once. */
+export function takePendingCircuitFocus(aerodrome: string | null): CircuitFocus | null {
+  const f = pending
+  const now = Date.now()
+  if (!f || f.aerodrome !== aerodrome || now - pendingAt > PENDING_MS) { pending = null; return null }
+  if (!takenAt) takenAt = now
+  if (now - takenAt > RETAKE_MS) { pending = null; return null }          // taken once already: not again for a card opened later
+  return f
+}
+
 export function useCircuitFocus(): CircuitFocus | null {
   return useSyncExternalStore(
     (cb) => { focusSubs.add(cb); return () => { focusSubs.delete(cb) } },

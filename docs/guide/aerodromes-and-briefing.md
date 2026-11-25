@@ -79,8 +79,10 @@ them (from zoom 9, with more detail as you zoom in):
   the main circuit stands out where several overlap. A pattern that is flown
   the other way round from the opposite runway end (its label names both,
   "RWY 03 RH · RWY 21 LH") has no direction marks of its own; tap a runway
-  end in the aerodrome card and the pattern shows marks running the way
-  that end flies it. A dashed line is approximate or not yet reviewed; the
+  end, in the aerodrome card or on the map (the runway number), and the
+  pattern shows marks running the way that end flies it. Tapping a runway
+  number on the map opens that aerodrome's card with the end chosen; tap it
+  again to show all circuits. A dashed line is approximate or not yet reviewed; the
   noise areas are drawn as a faint tint with an outline. Heights are written
   as the sources write them: above mean sea level as "AMSL" (a height on the
   QNH) and above the ground as "AGL". A height whose

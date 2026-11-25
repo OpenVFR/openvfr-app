@@ -37,7 +37,7 @@ import ChartsSection from './ChartsSection'
 import RouteActionButton, { type RouteActionProps } from './RouteActionButton'
 import LocalInfoSection from './LocalInfoSection'
 import { aerodromeId } from '@open-vfr/shared/aerodromeId'
-import { setCircuitFocus, setRelevantAerodrome, useCircuitFocus } from '../utils/aerodromeDetails'
+import { setCircuitFocus, setMountedCard, setRelevantAerodrome, takePendingCircuitFocus, useCircuitFocus } from '../utils/aerodromeDetails'
 import { loadStations as loadStationsShared, type StationRecord } from '@open-vfr/shared/wxStations'
 import { countryDatasetSource } from '@open-vfr/shared/countryData'
 import { IconChevronDown, IconChevronUp, IconHome, IconHomeFilled, IconMessageReport, IconX } from '@tabler/icons-react'
@@ -386,7 +386,12 @@ export default function AerodromePopup({
   // An aerodrome with no ICAO code (ESMARS) is told by its local id: it keys the local information and the circuit focus. Weather and NOTAMs
   // still use the real `p.icao` only.
   const adId = aerodromeId(p as unknown as Record<string, unknown>) || null
-  useEffect(() => () => setCircuitFocus(null), [adId])
+  useEffect(() => {
+    setMountedCard(adId)
+    const chosen = takePendingCircuitFocus(adId)             // a runway end tapped on the map before this card opened
+    if (chosen) setCircuitFocus(chosen)
+    return () => { setMountedCard(null); setCircuitFocus(null) }
+  }, [adId])
   // The club reporting points of this aerodrome are drawn from now on (and stay after the card closes).
   useEffect(() => { if (adId) setRelevantAerodrome(adId) }, [adId])
   useEffect(() => { setSelectedRunwayDesig(null) }, [p.icao])
