@@ -119,3 +119,15 @@ describe('buildRunwayWindHighlight', () => {
     expect(new Set(labels(e.opacity).flat())).toEqual(new Set(['ESME/30', 'ESME/06', 'ESME/24']))
   })
 })
+
+describe('buildRunwayWindHighlight chosen end', () => {
+  it('draws the chosen end blue, never the favoured green, with and without a wind highlight', () => {
+    const plain = buildRunwayWindHighlight('ESTT', [], { aerodrome: 'ESTT', runway: '03' })
+    expect(JSON.stringify(plain)).toContain('#38bdf8')
+    const wind = buildRunwayWindHighlight('ESTT', [{ designator: '21', favored: true }, { designator: '03', favored: false }], { aerodrome: 'ESTT', runway: '03' })
+    const s = JSON.stringify(wind.color)
+    expect(s).toContain('#38bdf8')
+    expect(s).toContain('#22c55e')
+    expect(buildRunwayWindHighlight('ESTT', [], null).color).toBe('#ffffff')
+  })
+})

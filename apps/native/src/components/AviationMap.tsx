@@ -2158,9 +2158,10 @@ export const AviationMap = React.memo(function AviationMap({
   const notamPointsSourceRef = useRef<GeoJSONSourceRef>(null)
   // Resolved once per mount (cheap sync fs `.exists` checks) — uses cached local
   // files when the pilot has downloaded offline data via Settings, else remote.
+  const chosenEnd = useCircuitFocus()
   const runwayWindExpr = useMemo(
-    () => buildRunwayWindHighlight(runwayWindHighlight?.icao ?? '', runwayWindHighlight?.ends ?? []),
-    [runwayWindHighlight],
+    () => buildRunwayWindHighlight(runwayWindHighlight?.icao ?? '', runwayWindHighlight?.ends ?? [], chosenEnd),
+    [runwayWindHighlight, chosenEnd],
   )
 
   // BUG FIX (same class as web MapView.tsx's identical fix, found live in

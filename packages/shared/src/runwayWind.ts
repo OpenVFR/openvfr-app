@@ -133,6 +133,11 @@ export const RUNWAY_LABEL_DEFAULT_HALO = '#333840'
 export const RUNWAY_FAVORED_COLOR = '#22c55e'
 export const RUNWAY_FAVORED_HALO = '#0d3d1f'
 
+// The runway end the pilot chose to see circuits for (card button or a tap on the number): sky blue like the circuit lines,
+// bigger, so it never reads as the green wind-favoured end.
+export const RUNWAY_CHOSEN_COLOR = '#38bdf8'
+export const RUNWAY_CHOSEN_HALO = '#0c2d48'
+
 export interface RunwayWindHighlightEnd {
   designator: string
   favored: boolean
@@ -158,6 +163,15 @@ export interface RunwayWindHighlightExpressions {
 export function buildRunwayWindHighlight(
   icao: string,
   ends: RunwayWindHighlightEnd[],
+  chosen: { aerodrome: string; runway: string } | null = null,
+): RunwayWindHighlightExpressions {
+  return windHighlight(icao, ends, chosen ? `${chosen.aerodrome}/${chosen.runway}` : null)
+}
+
+function windHighlight(
+  icao: string,
+  ends: RunwayWindHighlightEnd[],
+  chosenKey: string | null,
 ): RunwayWindHighlightExpressions {
   // Unique keys: a `match` with a repeated label is rejected by MapLibre as a whole, so the highlight was lost at
   // aerodromes with two runways of the same designator (an asphalt and a grass 12/30). The label is one per
@@ -167,11 +181,15 @@ export function buildRunwayWindHighlight(
     .filter((k) => !favoredKeys.includes(k))
   const key: unknown[] = ['concat', ['get', 'icao'], '/', ['get', 'id']]
 
+  // The chosen end (circuit focus) wins over the favoured look: blue, same size boost, other ends of its runway untouched.
+  const isChosen: unknown[] = ['==', key, chosenKey ?? '']
+  const pick = (chosenVal: unknown, rest: unknown): unknown => chosenKey ? ['case', isChosen, chosenVal, rest] : rest
+
   if (favoredKeys.length === 0) {
     return {
-      color: RUNWAY_LABEL_DEFAULT_COLOR,
-      haloColor: RUNWAY_LABEL_DEFAULT_HALO,
-      size: RUNWAY_LABEL_DEFAULT_SIZE,
+      color: pick(RUNWAY_CHOSEN_COLOR, RUNWAY_LABEL_DEFAULT_COLOR) as string,
+      haloColor: pick(RUNWAY_CHOSEN_HALO, RUNWAY_LABEL_DEFAULT_HALO) as string,
+      size: chosenKey ? ['interpolate', ['linear'], ['zoom'], 12, pick(8 + 3, 8), 16, pick(14 + 3, 14)] : RUNWAY_LABEL_DEFAULT_SIZE,
       opacity: RUNWAY_LABEL_DEFAULT_OPACITY,
     }
   }
@@ -196,15 +214,15 @@ export function buildRunwayWindHighlight(
   const otherFactor: unknown = otherKeys.length > 0 ? ['match', key, otherKeys, 0.4, 1] : 1
 
   return {
-    color:     ['match', key, favoredKeys, RUNWAY_FAVORED_COLOR, RUNWAY_LABEL_DEFAULT_COLOR],
-    haloColor: ['match', key, favoredKeys, RUNWAY_FAVORED_HALO,  RUNWAY_LABEL_DEFAULT_HALO],
+    color:     pick(RUNWAY_CHOSEN_COLOR, ['match', key, favoredKeys, RUNWAY_FAVORED_COLOR, RUNWAY_LABEL_DEFAULT_COLOR]) as unknown[],
+    haloColor: pick(RUNWAY_CHOSEN_HALO,  ['match', key, favoredKeys, RUNWAY_FAVORED_HALO,  RUNWAY_LABEL_DEFAULT_HALO]) as unknown[],
     size: ['interpolate', ['linear'], ['zoom'],
-      12, ['match', key, favoredKeys, 8 + 3, 8],
-      16, ['match', key, favoredKeys, 14 + 3, 14],
+      12, pick(8 + 3, ['match', key, favoredKeys, 8 + 3, 8]),
+      16, pick(14 + 3, ['match', key, favoredKeys, 14 + 3, 14]),
     ],
     opacity: ['interpolate', ['linear'], ['zoom'],
       12, ['*', 0, otherFactor],
-      13, ['*', 1, otherFactor],
+      13, ['*', 1, pick(1, otherFactor)],
     ],
   }
 }

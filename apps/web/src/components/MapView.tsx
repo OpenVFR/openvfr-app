@@ -84,7 +84,7 @@ import { snapIconName, formatObstacleName, formatLandmarkName, obstacleWaypointN
 import { type PointFeature } from './FeaturePopup'
 import { localAreaInfo } from '@open-vfr/shared/aerodromeDetails'
 import { aerodromeId } from '@open-vfr/shared/aerodromeId'
-import { chooseRunwayEndOnMap } from '../utils/aerodromeDetails'
+import { chooseRunwayEndOnMap, useCircuitFocus } from '../utils/aerodromeDetails'
 import { DETAIL_TAP_EDGE_LAYERS, DETAIL_TAP_FILL_LAYERS } from '@open-vfr/shared/aerodromeDetailsStyle'
 import type { WhatsHereItem, RouteAction } from './WhatsHerePopup'
 import SnapPicker, { type SnapCandidate } from './SnapPicker'
@@ -565,6 +565,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const [runwayWindHighlight, setRunwayWindHighlight] =
     useState<{ icao: string; ends: RunwayWindEnd[] } | null>(null)
 
+  // The runway end chosen for circuits (card button or tap on the number): its map number is drawn in the circuit blue
+  const circuitFocus = useCircuitFocus()
   const handleRunwayWind = useCallback((icao: string, ends: RunwayWindEnd[]) => {
     setRunwayWindHighlight(ends.length > 0 ? { icao, ends } : null)
   }, [])
@@ -602,12 +604,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const expr = buildRunwayWindHighlight(
       runwayWindHighlight?.icao ?? '',
       runwayWindHighlight?.ends ?? [],
+      circuitFocus,
     )
     map.setPaintProperty('runway-threshold-label', 'text-color', expr.color as ExpressionSpecification | string)
     map.setPaintProperty('runway-threshold-label', 'text-halo-color', expr.haloColor as ExpressionSpecification | string)
     map.setLayoutProperty('runway-threshold-label', 'text-size', expr.size as ExpressionSpecification)
     map.setPaintProperty('runway-threshold-label', 'text-opacity', expr.opacity as ExpressionSpecification)
-  }, [runwayWindHighlight])
+  }, [runwayWindHighlight, circuitFocus])
   // Countries the user works in, picked in Settings from the server's list
   // (useCountries). Region-scoped data (regional NOTAMs) takes the whole
   // list. One active country for now (MAX_SELECTED_COUNTRIES); the
