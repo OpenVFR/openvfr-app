@@ -7,7 +7,7 @@
  */
 import { useState } from 'react'
 import {
-  DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, orbitLabel, unstatedCircuitEnds, unstatedCircuitNote, circuitEndGroups, type DetailProvenance,
+  DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatLimits, hasLocalInfo, orbitLabel, unstatedCircuitEnds, unstatedCircuitNote, circuitEndGroups, type DetailProvenance,
   type LocalInfo, type RuleGroup,
 } from '@open-vfr/shared/aerodromeDetails'
 import { useCircuitNotes, useLocalInfo } from '../utils/aerodromeDetails'
@@ -25,7 +25,7 @@ function Source({ p }: { p?: DetailProvenance }) {
   if (!p) return null
   return (
     <span className={css.source}>
-      {p.review === 'pending' && <span className={css.pending} title="Not reviewed yet: shown in a preview build only">unreviewed</span>}
+      <span>Source:</span>
       {(p.sources?.length ? p.sources : [p]).map((q, i) => q.source_name && (
         <span key={i} className={css.sourceItem}>
           {i > 0 && '· '}
@@ -38,34 +38,38 @@ function Source({ p }: { p?: DetailProvenance }) {
   )
 }
 
-function Block({ title, prov, children }: { title: string; prov?: DetailProvenance; children: React.ReactNode }) {
+/** A block of the section; `count` makes it an expander (closed to start with unless it is short (3 lines or fewer): the heading says how many lines are inside, `preview` shows while it is closed). */
+function Block({ title, prov, children, count, preview }: { title: string; prov?: DetailProvenance; children: React.ReactNode; count?: number; preview?: React.ReactNode }) {
+  const [open, setOpen] = useState(count === undefined || count <= 3)
+  const pending = prov?.review === 'pending' && <span className={css.pending} title="Not reviewed yet: shown in a preview build only">unreviewed</span>
   return (
     <div className={css.block}>
-      <div className={css.blockHead}><span className={css.blockTitle}>{title}</span><Source p={prov} /></div>
-      {children}
+      {count === undefined ? (
+        <div className={css.blockHead}><span className={css.blockTitle}>{title}</span>{pending}</div>
+      ) : (
+        <button type="button" className={`${css.blockHead} ${css.blockToggle}`} aria-expanded={open} onClick={() => setOpen(o => !o)}>
+          <span className={css.chevron} aria-hidden>{open ? '\u25BE' : '\u25B8'}</span>
+          <span className={css.blockTitle}>{title}</span>
+          <span className={css.blockCount}>{count}</span>
+          {pending}
+        </button>
+      )}
+      {open ? <>{children}<Source p={prov} /></> : preview}
     </div>
   )
 }
 
-/** Rules under headings: the key lines show, the rest fold away under their heading. */
-function RuleGroups({ groups }: { groups: RuleGroup[] }) {
-  const [open, setOpen] = useState<Record<string, boolean>>({})
+/** Rules under headings; `onlyKey` keeps just the lines marked key (the preview while the block is closed). */
+function RuleGroups({ groups, onlyKey }: { groups: RuleGroup[]; onlyKey?: boolean }) {
   return (
     <>
       {groups.map(g => {
-        const key = g.lines.filter(l => l.key), rest = g.lines.filter(l => !l.key)
-        const fold = rest.length >= 2          // a single line is not worth a toggle
-        const shown = open[g.id] || !fold ? g.lines : key
+        const shown = onlyKey ? g.lines.filter(l => l.key) : g.lines
+        if (!shown.length) return null
         return (
           <div key={g.id} className={css.ruleGroup}>
             <div className={css.ruleGroupTitle}>{g.title}</div>
-            {shown.length > 0 && <ul className={css.list}>{shown.map((l, i) => <li key={i} className={l.key ? css.keyRule : undefined}>{l.text}</li>)}</ul>}
-            {fold && (
-              <button type="button" className={css.more} aria-expanded={!!open[g.id]}
-                onClick={() => setOpen(o => ({ ...o, [g.id]: !o[g.id] }))}>
-                {open[g.id] ? 'Show less' : `${key.length ? `${rest.length} more` : `Show ${rest.length}`}`}
-              </button>
-            )}
+            <ul className={css.list}>{shown.map((l, i) => <li key={i} className={l.key ? css.keyRule : undefined}>{l.text}</li>)}</ul>
           </div>
         )
       })}
@@ -79,11 +83,24 @@ function CircuitList({ info, notes }: { info: LocalInfo; notes: string[] }) {
   const none = unstatedCircuitEnds(info)
   return (
     <>
-      <ul className={css.list}>
-        {ends.map(e => <li key={e.runway}><b>RWY {e.runway}</b> {e.entries.map(x => x.text).join('; ')}</li>)}
-      </ul>
-      {summary && <div className={css.sub}>{summary}</div>}
-      {notes.map(n => <div key={n} className={css.sub}>{n}</div>)}
+      {summary && <div className={css.height}>{summary}</div>}
+      {ends.map(e => (
+        <div key={e.runway} className={css.end}>
+          <span className={css.rwy} aria-label={`Runway ${e.runway}`}>{e.runway}</span>
+          <ul className={css.entries}>
+            {e.entries.map((x, i) => (
+              <li key={i} className={css.entry}>
+                <span className={css.hand}>{x.hand}</span>
+                {x.who && <span className={css.who}>{x.who}</span>}
+                {x.height && <span className={css.who}>{x.height}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      {notes.length > 0 && (
+        <ul className={css.notes}>{notes.map(n => <li key={n}>{n}</li>)}</ul>
+      )}
       {none.length > 0 && <div className={css.sub}>{unstatedCircuitNote(none)}</div>}
       <div className={css.sub}>Shown on the map when zoomed in.</div>
     </>
@@ -97,11 +114,11 @@ function Content({ info, notes }: { info: LocalInfo; notes: string[] }) {
       {info.circuits.length > 0 && (
         <Block title="Circuits" prov={pv['circuits']}>
           <CircuitList info={info} notes={notes} />
-          {unstatedCircuitEnds(info).length > 0 && <div className={css.sub}>{unstatedCircuitNote(unstatedCircuitEnds(info))}</div>}
         </Block>
       )}
       {info.localRules.length > 0 && (
-        <Block title="Local rules" prov={pv['local_rules']}>
+        <Block title="Local rules" prov={pv['local_rules']} count={info.localRules.length}
+          preview={info.localRuleGroups ? <RuleGroups groups={info.localRuleGroups} onlyKey /> : undefined}>
           {info.localRuleGroups
             ? <RuleGroups groups={info.localRuleGroups} />
             : <ul className={css.list}>{info.localRules.map((r, i) => <li key={i}>{r}</li>)}</ul>}

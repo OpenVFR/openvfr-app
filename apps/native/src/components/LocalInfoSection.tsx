@@ -6,7 +6,7 @@
 import React, { useEffect, useState } from 'react'
 import { Linking, Text, TouchableOpacity, View, StyleSheet } from 'react-native'
 import {
-  DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, orbitLabel, unstatedCircuitEnds, unstatedCircuitNote, circuitEndGroups, circuitNotes, parseAerodromeDetails,
+  DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatLimits, hasLocalInfo, orbitLabel, unstatedCircuitEnds, unstatedCircuitNote, circuitEndGroups, circuitNotes, parseAerodromeDetails,
   type DetailProvenance, type LocalInfo, type RuleGroup,
 } from '@open-vfr/shared/aerodromeDetails'
 import { useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -18,7 +18,7 @@ function Sources({ p, styles }: { p?: DetailProvenance; styles: ReturnType<typeo
   const list = p.sources?.length ? p.sources : [p]
   return (
     <View style={styles.sources}>
-      {p.review === 'pending' && <Text style={styles.pending}>UNREVIEWED</Text>}
+      <Text style={styles.source}>Source:</Text>
       {list.map((q, i) => q.source_name && (
         <Text key={i} style={[styles.source, q.source_url ? styles.link : null]}
           onPress={q.source_url ? () => { void Linking.openURL(q.source_url!) } : undefined}>
@@ -29,38 +29,42 @@ function Sources({ p, styles }: { p?: DetailProvenance; styles: ReturnType<typeo
   )
 }
 
-function Block({ title, prov, children, styles }:
-  { title: string; prov?: DetailProvenance; children: React.ReactNode; styles: ReturnType<typeof makeStyles> }) {
+/** A block of the section; `count` makes it an expander (closed to start with unless it is short (3 lines or fewer): the heading says how many lines are inside). */
+function Block({ title, prov, children, styles, count, preview }:
+  { title: string; prov?: DetailProvenance; children: React.ReactNode; styles: ReturnType<typeof makeStyles>; count?: number; preview?: React.ReactNode }) {
+  const [open, setOpen] = useState(count === undefined || count <= 3)
+  const head = (
+    <View style={styles.blockHead}>
+      {count !== undefined && <Text style={styles.chevron}>{open ? '\u25BE' : '\u25B8'}</Text>}
+      <Text style={styles.blockTitle}>{title.toUpperCase()}</Text>
+      {count !== undefined && <Text style={styles.count}>{count}</Text>}
+      {prov?.review === 'pending' && <Text style={styles.pending}>UNREVIEWED</Text>}
+    </View>
+  )
   return (
     <View style={styles.block}>
-      <View style={styles.blockHead}>
-        <Text style={styles.blockTitle}>{title.toUpperCase()}</Text>
-        <Sources p={prov} styles={styles} />
-      </View>
-      {children}
+      {count === undefined ? head : (
+        <TouchableOpacity onPress={() => setOpen(o => !o)} accessibilityRole="button" accessibilityState={{ expanded: open }}
+          accessibilityLabel={`${title}, ${count} lines, ${open ? 'collapse' : 'expand'}`} style={styles.toggle}>
+          {head}
+        </TouchableOpacity>
+      )}
+      {open ? <>{children}<Sources p={prov} styles={styles} /></> : preview}
     </View>
   )
 }
 
-/** Rules under headings: the key lines show, the rest fold away under their heading. */
-function RuleGroups({ groups, styles }: { groups: RuleGroup[]; styles: ReturnType<typeof makeStyles> }) {
-  const [open, setOpen] = useState<Record<string, boolean>>({})
+/** Rules under headings; `onlyKey` keeps just the lines marked key (the preview while the block is closed). */
+function RuleGroups({ groups, onlyKey, styles }: { groups: RuleGroup[]; onlyKey?: boolean; styles: ReturnType<typeof makeStyles> }) {
   return (
     <>
       {groups.map(g => {
-        const key = g.lines.filter(l => l.key), rest = g.lines.filter(l => !l.key)
-        const fold = rest.length >= 2          // a single line is not worth a toggle
-        const shown = open[g.id] || !fold ? g.lines : key
+        const shown = onlyKey ? g.lines.filter(l => l.key) : g.lines
+        if (!shown.length) return null
         return (
           <View key={g.id} style={styles.ruleGroup}>
             <Text style={styles.ruleGroupTitle}>{g.title}</Text>
             {shown.map((l, i) => <Text key={i} style={[styles.item, l.key && styles.keyRule]}>{l.text}</Text>)}
-            {fold && (
-              <TouchableOpacity onPress={() => setOpen(o => ({ ...o, [g.id]: !o[g.id] }))} accessibilityRole="button"
-                accessibilityState={{ expanded: !!open[g.id] }} accessibilityLabel={`${g.title}: ${open[g.id] ? 'show less' : 'show all'}`}>
-                <Text style={styles.more}>{open[g.id] ? 'Show less' : key.length ? `${rest.length} more` : `Show ${rest.length}`}</Text>
-              </TouchableOpacity>
-            )}
           </View>
         )
       })}
@@ -87,15 +91,29 @@ export default function LocalInfoSection({ info, icao }: { info: LocalInfo | und
     <Section title="Local information">
       {info.circuits.length > 0 && (
         <Block title="Circuits" prov={pv['circuits']} styles={styles}>
-          {circuitEndGroups(info.circuits).ends.map(e => <Text key={e.runway} style={styles.item}>RWY {e.runway}  {e.entries.map(x => x.text).join('; ')}</Text>)}
-          {circuitEndGroups(info.circuits).summary && <Text style={styles.sub}>{circuitEndGroups(info.circuits).summary}</Text>}
-          {notes.map(n => <Text key={n} style={styles.sub}>{n}</Text>)}
+          {circuitEndGroups(info.circuits).summary && <Text style={styles.height}>{circuitEndGroups(info.circuits).summary}</Text>}
+          {circuitEndGroups(info.circuits).ends.map((e, k) => (
+            <View key={e.runway} style={[styles.end, k > 0 && styles.endSep]} accessible accessibilityLabel={`Runway ${e.runway}: ${e.entries.map(x => x.text).join('; ')}`}>
+              <View style={styles.rwy}><Text style={styles.rwyText}>{e.runway}</Text></View>
+              <View style={styles.entries}>
+                {e.entries.map((x, i) => (
+                  <View key={i} style={styles.entry}>
+                    <Text style={styles.hand}>{x.hand}</Text>
+                    {x.who && <Text style={styles.who}>{x.who}</Text>}
+                    {x.height && <Text style={styles.who}>{x.height}</Text>}
+                  </View>
+                ))}
+              </View>
+            </View>
+          ))}
+          {notes.map(n => <Text key={n} style={styles.note2}>{'\u2022  '}{n}</Text>)}
           {unstatedCircuitEnds(info).length > 0 && <Text style={styles.sub}>{unstatedCircuitNote(unstatedCircuitEnds(info))}</Text>}
           <Text style={styles.sub}>Shown on the map when zoomed in.</Text>
         </Block>
       )}
       {info.localRules.length > 0 && (
-        <Block title="Local rules" prov={pv['local_rules']} styles={styles}>
+        <Block title="Local rules" prov={pv['local_rules']} styles={styles} count={info.localRules.length}
+          preview={info.localRuleGroups ? <RuleGroups groups={info.localRuleGroups} onlyKey styles={styles} /> : undefined}>
           {info.localRuleGroups ? <RuleGroups groups={info.localRuleGroups} styles={styles} /> : lines(info.localRules)}
         </Block>
       )}
@@ -137,19 +155,31 @@ export default function LocalInfoSection({ info, icao }: { info: LocalInfo | und
 
 function makeStyles(theme: ScaledTheme) {
   return StyleSheet.create({
-    block: { marginBottom: theme.space2 },
-    blockHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: theme.space1, marginBottom: 2 },
-    blockTitle: { color: theme.textMuted, fontSize: theme.textXs, letterSpacing: 0.6 },
-    sources: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: 4, flexShrink: 1 },
+    block: { paddingTop: theme.space2, paddingBottom: theme.space1, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.borderSubtle },
+    blockHead: { flexDirection: 'row', alignItems: 'center', gap: theme.space1, marginBottom: theme.space1 },
+    toggle: { minHeight: 44, justifyContent: 'center' },
+    chevron: { color: theme.textMuted, fontSize: theme.textSm, width: 14 },
+    count: { color: theme.textSecondary, fontSize: theme.textXs, fontWeight: '700', backgroundColor: theme.surfaceHover, borderRadius: theme.radiusFull, paddingHorizontal: 6, minWidth: 18, textAlign: 'center' },
+    blockTitle: { color: theme.textMuted, fontSize: theme.textXs, letterSpacing: 0.8, fontWeight: '600' },
+    sources: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: theme.space1 },
+    height: { color: theme.textPrimary, fontSize: theme.textSm, marginBottom: theme.space1 },
+    end: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space2, paddingVertical: theme.space1 },
+    endSep: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.borderSubtle },
+    rwy: { minWidth: 40, alignItems: 'center', paddingVertical: 3, paddingHorizontal: 8, borderWidth: 1, borderColor: theme.textMuted, borderRadius: 8 },
+    rwyText: { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '700' },
+    entries: { flex: 1, gap: 6 },
+    entry: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 10 },
+    hand: { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '600' },
+    who: { color: theme.textMuted, fontSize: theme.textSm },
+    note2: { color: theme.textMuted, fontSize: theme.textXs, lineHeight: 18, marginTop: 4, paddingLeft: 4 },
     source: { color: theme.textMuted, fontSize: theme.textXs },
     link: { textDecorationLine: 'underline' },
     pending: { color: '#f59e0b', fontSize: theme.textXs, borderWidth: 1, borderColor: '#f59e0b', borderRadius: 3, paddingHorizontal: 3 },
-    item: { color: theme.textPrimary, fontSize: theme.textSm, marginVertical: 1 },
+    item: { color: theme.textPrimary, fontSize: theme.textSm, lineHeight: 20, marginVertical: 3 },
     ruleGroup: { marginBottom: theme.space1 },
     ruleGroupTitle: { color: theme.textMuted, fontSize: theme.textXs, fontWeight: '600', marginTop: 2 },
     keyRule: { fontWeight: '600' },
-    more: { color: theme.textMuted, fontSize: theme.textXs, textDecorationLine: 'underline', paddingVertical: 4 },
-    sub: { color: theme.textMuted, fontSize: theme.textXs, marginLeft: theme.space2 },
+    sub: { color: theme.textMuted, fontSize: theme.textXs, lineHeight: 18, marginTop: 4 },
     row: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space1 },
     swatch: { width: 8, height: 8, borderRadius: 2, marginTop: 5 },
     note: { color: theme.textMuted, fontSize: theme.textXs, fontStyle: 'italic' },

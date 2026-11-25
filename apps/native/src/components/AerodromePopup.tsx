@@ -406,7 +406,7 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
                     const windEnds = r.thresholds ? computeRunwayWind(r.thresholds, effectiveWind) : []
                     const hasWind = windEnds.some((e) => e.headwindKt != null)
                     return (
-                      <View key={i} style={{ marginBottom: scaledTheme.space2 }}>
+                      <View key={i} style={{ marginBottom: scaledTheme.space2, paddingBottom: scaledTheme.space1 }}>
                         {windEnds.length > 0 ? (
                           <View style={runwayStyles.desigRow}>
                             {windEnds.map((e, j) => (
@@ -794,14 +794,16 @@ function makeRunwayStyles(theme: ScaledTheme) {
   desigRow: {
     flexDirection: 'row',
     alignItems:    'center',
-    gap:           4,
+    gap:           6,
     flexWrap:      'wrap',
   },
   desigPill: {
     borderWidth:   1,
-    borderRadius:  4,
-    paddingHorizontal: 5,
-    paddingVertical:   1,
+    borderRadius:  6,
+    minWidth:      36,
+    alignItems:    'center',
+    paddingHorizontal: 9,
+    paddingVertical:   5,
   },
   // Runway end whose circuits alone are shown on the map (experimental aerodrome details)
   desigFocused: {
@@ -827,8 +829,8 @@ function makeRunwayStyles(theme: ScaledTheme) {
   // screen or a large UI scale, never breaks mid-item), so the row looks the same for every runway.
   windRow: {
     flexDirection: 'row',
-    columnGap:     10,
-    marginTop:     3,
+    columnGap:     16,
+    marginTop:     theme.space1,
   },
   windTxt: {
     flex: 1,

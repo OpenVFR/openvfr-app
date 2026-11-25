@@ -391,7 +391,8 @@ export function unstatedCircuitNote(ends: readonly string[]): string {
   return `Not stated for RWY ${ends.join(', ')}. The ICAO standard is left-hand unless published otherwise.`
 }
 
-export interface CircuitEntry { direction: 'left' | 'right' | null; text: string }
+/** One circuit of a runway end: `text` is the one-line form; the parts let a card lay it out (hand and who it is for in columns, the height apart). */
+export interface CircuitEntry { direction: 'left' | 'right' | null; text: string; hand: string; who: string | null; height: string | null }
 export interface CircuitEndGroup { runway: string; entries: CircuitEntry[] }
 
 /** A height with its reference; a source that gives none is said so ("1000 ft (reference not stated)"): a bare height is ambiguous (above the field or above sea level) and no reference is guessed. */
@@ -424,14 +425,13 @@ export function circuitEndGroups(circuits: readonly CircuitInfo[]): { summary: s
   const groupedEnds = new Set(circuits.filter(c => c.aircraft).map(c => c.runway.toUpperCase().replace(/^RWY\s*/, '').trim()))
   for (const c of circuits) {
     const runway = c.runway.toUpperCase().replace(/^RWY\s*/, '').trim()
-    const text = [
-      c.direction ? `${HAND_GLYPH[c.direction]} ${c.direction}-hand` : 'direction not stated',
-      shared ? null : heightOf(c),
-      // at an end where another circuit names its aircraft, the one that names none is for all the others
-      c.aircraft ? (AIRCRAFT_LABEL[c.aircraft] ?? c.aircraft) : groupedEnds.has(runway) ? 'other aircraft' : null,
-    ].filter(Boolean).join(' \u00B7 ')
+    const hand = c.direction ? `${HAND_GLYPH[c.direction]} ${c.direction}-hand` : 'direction not stated'
+    const height = shared ? null : heightOf(c)
+    // at an end where another circuit names its aircraft, the one that names none is for all the others
+    const who = c.aircraft ? (AIRCRAFT_LABEL[c.aircraft] ?? c.aircraft) : groupedEnds.has(runway) ? 'other aircraft' : null
+    const text = [hand, height, who].filter(Boolean).join(' \u00B7 ')
     const list = by.get(runway) ?? []
-    if (!list.some(e => e.text === text)) list.push({ direction: c.direction, text })
+    if (!list.some(e => e.text === text)) list.push({ direction: c.direction, text, hand, who, height })
     by.set(runway, list)
   }
   const ends = [...by.entries()].map(([runway, entries]) => ({ runway, entries }))

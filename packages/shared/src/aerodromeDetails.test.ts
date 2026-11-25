@@ -276,7 +276,7 @@ describe('circuitEndGroups', () => {
   it('says when a direction is not stated and drops an identical repeat', () => {
     const g = circuitEndGroups([c('RWY 18', null, null), c('18', null, null)])
     expect(g.ends).toHaveLength(1)
-    expect(g.ends[0]!.entries).toEqual([{ direction: null, text: 'direction not stated' }])
+    expect(g.ends[0]!.entries).toEqual([{ direction: null, text: 'direction not stated', hand: 'direction not stated', who: null, height: null }])
   })
 })
 

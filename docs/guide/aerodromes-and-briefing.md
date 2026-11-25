@@ -83,7 +83,8 @@ them (from zoom 9, with more detail as you zoom in):
   pattern shows marks running the way that end flies it. Tapping a runway
   number on the map opens that aerodrome's card with the end chosen (in the
   native app it chooses the end and shows the banner at the top); tap it
-  again to show all circuits. A dashed line is approximate or not yet reviewed; the
+  again to show all circuits. The chosen end's number is drawn larger in sky blue (the
+  wind-favoured end stays green). Circuits are drawn dashed so the runway shows through; fine, sparse dashes mean the line is approximate or not yet reviewed; the
   noise areas are drawn as a faint tint with an outline. Heights are written
   as the sources write them: above mean sea level as "AMSL" (a height on the
   QNH) and above the ground as "AGL". A height whose
