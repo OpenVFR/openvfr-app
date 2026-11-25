@@ -395,7 +395,10 @@ export interface CircuitEntry { direction: 'left' | 'right' | null; text: string
 export interface CircuitEndGroup { runway: string; entries: CircuitEntry[] }
 
 /** A height with its reference; a source that gives none is said so ("1000 ft (reference not stated)"): a bare height is ambiguous (above the field or above sea level) and no reference is guessed. */
-const heightOf = (c: CircuitInfo): string | null => (c.altitude_ft ? `${c.altitude_ft} ft${c.altitude_ref ? ` ${c.altitude_ref}` : ' (reference not stated)'}` : null)
+/** How a stored height reference reads: a height on the QNH is a height above mean sea level (AMSL, as the areas and the sources write it); "AAL" is above the aerodrome / ground (AGL). */
+export const heightRefLabel = (ref: string | null): string | null => (!ref ? null : ref.toUpperCase() === 'QNH' ? 'AMSL' : ref.toUpperCase() === 'AAL' ? 'AGL' : ref)
+
+const heightOf = (c: CircuitInfo): string | null => (c.altitude_ft ? `${c.altitude_ft} ft ${heightRefLabel(c.altitude_ref) ?? '(reference not stated)'}` : null)
 
 /** The notes the source gives a drawn circuit ("At least 150 m AGL on downwind"), each with the circuit's name, once. The card shows them under the circuit list. */
 export function circuitNotes(features: readonly DetailFeature[], aerodrome: string): string[] {
@@ -442,7 +445,7 @@ export function formatCircuit(c: CircuitInfo): string {
   return [
     `RWY ${c.runway}`,
     c.direction ? `${c.direction}-hand` : 'direction not stated',
-    c.altitude_ft ? `${c.altitude_ft} ft${c.altitude_ref ? ` ${c.altitude_ref}` : ''}` : null,
+    c.altitude_ft ? `${c.altitude_ft} ft${heightRefLabel(c.altitude_ref) ? ` ${heightRefLabel(c.altitude_ref)}` : ''}` : null,
     c.aircraft ? (AIRCRAFT_LABEL[c.aircraft] ?? c.aircraft) : null,
   ].filter(Boolean).join(' · ')
 }

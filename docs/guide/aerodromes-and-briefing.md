@@ -76,7 +76,9 @@ them (from zoom 9, with more detail as you zoom in):
   turn arrow, which only gives the direction, is drawn fainter than a
   drawn circuit; circuits for gliders, ultralights, helicopters and
   gyros are drawn thinner than the one for ordinary powered aircraft, so
-  the main circuit stands out where several overlap. A height whose
+  the main circuit stands out where several overlap. Heights are written
+  as the sources write them: above mean sea level as "AMSL" (a height on the
+  QNH) and above the ground as "AGL". A height whose
   source gives no reference (above the field or above sea level) says so
   in the card ("1000 ft (reference not stated)"); none is guessed. Notes
   the source gives a drawn circuit, such as "at least 150 m AGL on

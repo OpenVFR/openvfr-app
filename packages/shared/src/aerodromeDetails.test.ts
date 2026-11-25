@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   parseAerodromeDetails, localInfo, formatCircuit, formatLimits, circuitTurnArrow, schematicCircuitFeatures, hasLocalInfo, holdingOrbit,
   holdingOrbitFeatures, ORBIT_RADIUS_NM, localAreaInfo, RULE_GROUP_IDS, RULE_GROUP_LABEL,
-  TURN_STRAIGHT_NM, TURN_RADIUS_NM, endsOfDesignator, runwayEndsOf, circuitEndGroups, circuitNotes, unstatedCircuitEnds, unstatedCircuitNote, type DetailFeature,
+  TURN_STRAIGHT_NM, TURN_RADIUS_NM, endsOfDesignator, runwayEndsOf, circuitEndGroups, circuitNotes, heightRefLabel, unstatedCircuitEnds, unstatedCircuitNote, type DetailFeature,
 } from './aerodromeDetails'
 import type { LineString } from 'geojson'
 
@@ -46,7 +46,7 @@ describe('localInfo', () => {
       provenance: { circuits: { source_name: 'AIP', review: 'pending' }, local_rules: { source_name: 'AIP' } },
     }
     const i = localInfo(props)
-    expect(i.circuits.map(formatCircuit)).toEqual(['RWY 12 · left-hand · 1300 ft QNH', 'RWY 30 · direction not stated'])
+    expect(i.circuits.map(formatCircuit)).toEqual(['RWY 12 · left-hand · 1300 ft AMSL', 'RWY 30 · direction not stated'])
     expect(i.localRules).toEqual(['Report intentions before entering the circuit'])
     expect(formatLimits(i.areas[0]!.floor, i.areas[0]!.ceiling)).toBe('GND – FL065')
     expect(i.reportingPoints).toEqual([{ name: 'LYCKAN', remark: null }])
@@ -261,7 +261,7 @@ describe('circuitEndGroups', () => {
 
   it('groups by runway end in runway order and states a shared height once', () => {
     const g = circuitEndGroups([c('30', 'right', 1300), c('12', 'left', 1300), c('12', 'right', 1300, 'glider')])
-    expect(g.summary).toBe('Circuit height 1300 ft QNH')
+    expect(g.summary).toBe('Circuit height 1300 ft AMSL')
     expect(g.ends.map(e => e.runway)).toEqual(['12', '30'])
     expect(g.ends[0]!.entries.map(e => e.text)).toEqual(['\u21B7 right-hand \u00B7 glider', '\u21B6 left-hand \u00B7 other aircraft'])
   })
@@ -269,8 +269,8 @@ describe('circuitEndGroups', () => {
   it('keeps each height on its own entry when they differ, and with a single circuit', () => {
     const g = circuitEndGroups([c('12', 'left', 1000), c('30', 'right', 1300)])
     expect(g.summary).toBeNull()
-    expect(g.ends[1]!.entries[0]!.text).toBe('\u21B7 right-hand \u00B7 1300 ft QNH')
-    expect(circuitEndGroups([c('04', 'left', 1200)]).ends[0]!.entries[0]!.text).toBe('\u21B6 left-hand \u00B7 1200 ft QNH')
+    expect(g.ends[1]!.entries[0]!.text).toBe('\u21B7 right-hand \u00B7 1300 ft AMSL')
+    expect(circuitEndGroups([c('04', 'left', 1200)]).ends[0]!.entries[0]!.text).toBe('\u21B6 left-hand \u00B7 1200 ft AMSL')
   })
 
   it('says when a direction is not stated and drops an identical repeat', () => {
@@ -294,5 +294,11 @@ describe('circuit heights and notes', () => {
     })
     expect(circuitNotes([f('ESMI', 'At least 150 m AGL on downwind.'), f('ESMI', 'At least 150 m AGL on downwind.'), f('ESMI', null), f('ESMI', 'x', true), f('ESXX', 'y')], 'ESMI'))
       .toEqual(['Traffic circuit gliders (runway 12): At least 150 m AGL on downwind.'])
+  })
+})
+
+describe('heightRefLabel', () => {
+  it('reads QNH as AMSL and AAL as AGL, and leaves anything else', () => {
+    expect([heightRefLabel('QNH'), heightRefLabel('qnh'), heightRefLabel('AAL'), heightRefLabel('MSL'), heightRefLabel(null)]).toEqual(['AMSL', 'AMSL', 'AGL', 'MSL', null])
   })
 })
