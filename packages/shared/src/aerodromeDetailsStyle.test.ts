@@ -36,6 +36,9 @@ describe('aerodromeDetailsStyle', () => {
     expect(circuitLabel('RWY 06 RH · RWY 24 LH')).toBe('06 RH · 24 LH')
     expect(circuitLabel('RWY 30 RH · gliders')).toBe('30 RH · gliders')
     expect(circuitLabel('ESMI UL-landningsvarv')).toBe('UL-landningsvarv')
+    expect(circuitLabel('Traffic circuit gliders (runway 12) \u2014 RWY 12 RH \u00B7 RWY 30 LH', 'glider')).toBe('gliders \u00B7 12 RH \u00B7 30 LH')
+    expect(circuitLabel('Traffic circuit powered aircraft (runway 12)')).toBe('powered aircraft')
+    expect(circuitLabel('Traffic circuit UL (runway 30) \u2014 RWY 30 RH')).toBe('UL \u00B7 30 RH')
     // labels are dark on a white halo, never the (light) line colour
     for (const id of ['ad-circuit-label', 'ad-circuit-turn-label']) {
       expect(DETAIL_LAYERS.find(l => l.id === id)!.paint['text-color']).toBe('#0c4a6e')
@@ -102,6 +105,10 @@ describe('arrival routes', () => {
     expect(JSON.stringify(line.filter)).toContain('arrival_route')
     expect(JSON.stringify(DETAIL_LAYERS.find(l => l.id === 'ad-details-line-dashed')!.filter)).toContain('arrival_route')   // excluded from the plain-line layer
     expect(staticColorLayers().some(l => l.id === 'ad-circuit-line-dashed-powered')).toBe(true)     // native
+    // a fly-in route has its own colour and is never drawn by a group layer
+    const routeLayer = staticColorLayers().find(l => l.id === 'ad-circuit-line-route')!
+    expect(routeLayer.paint['line-color']).toBe(DETAIL_KIND_COLOR.arrival_route)
+    expect(JSON.stringify(staticColorLayers().find(l => l.id === 'ad-circuit-line-powered')!.filter)).toContain('arrival_route')
   })
   it('opens a tap popup', () => {
     expect(localAreaInfo({ aerodrome: 'ESTT', kind: 'arrival_route', name: 'Fly-in and join' })).toMatchObject({ kindLabel: 'Arrival route', name: 'Fly-in and join' })
@@ -177,11 +184,15 @@ describe('direction marks for a loop flown both ways', () => {
   const spec = DETAIL_LAYERS.find(l => l.id === 'ad-circuit-dirmarks')!
 
   it('are hidden until a runway end is chosen, then shown for that end at that aerodrome only', () => {
-    expect(JSON.stringify(layerFilter(spec, null))).toContain('["==",0,1]')
+    expect(JSON.stringify(layerFilter(spec, null))).toContain('hidden-until-a-runway-end-is-chosen')
     const f = JSON.stringify(layerFilter(spec, { aerodrome: 'ESTT', runway: '03' }))
     expect(f).toContain('"ESTT"')
     expect(f).toContain('|03|')
-    expect(f).not.toContain('["==",0,1]')
+    expect(f).not.toContain('hidden-until-a-runway-end-is-chosen')
+    // every comparison in these filters has an expression as its first operand (the new filter syntax), never two plain values
+    const bare = (x: unknown): boolean => Array.isArray(x) && ((x[0] === '==' && x.length === 3 && !Array.isArray(x[1])) || x.some(bare))
+    expect(bare(layerFilter(spec, null))).toBe(false)
+    expect(bare(layerFilter(spec, { aerodrome: 'ESTT', runway: '03' }))).toBe(false)
   })
 
   it('no other circuit layer draws a direction feature (they are schematic) and the map data carries them', () => {

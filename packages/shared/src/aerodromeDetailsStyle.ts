@@ -42,7 +42,10 @@ const CIRCUIT_LABEL_COLOR = '#0c4a6e'
 const AREA_LABEL_COLOR = '#1f2937'
 const CIRCUIT_LABEL_SIZE: Expr = ['interpolate', ['linear'], ['zoom'], 11.5, 12, 14, 14]
 // A circuit for gliders, ultralights, helicopters or gyros is drawn thinner than the one for ordinary powered aircraft, so the main one stands out where several overlap.
-const SECONDARY: Expr = ['in', ['get', 'aircraft'], ['literal', ['glider', 'ultralight', 'helicopter', 'gyro']]]
+const ARRIVAL: Expr = ['==', ['get', 'kind'], 'arrival_route']
+// A fly-in route is the quietest line on the map: the circuit is what the pilot flies, the route only leads to it (thin like the secondary circuits, and fainter).
+const SECONDARY: Expr = ['any', ARRIVAL, ['in', ['get', 'aircraft'], ['literal', ['glider', 'ultralight', 'helicopter', 'gyro']]]]
+const ROUTE_FAINT: Expr = ['case', ARRIVAL, 0.55, 1]
 const THIN = 0.7
 const CIRCUIT_WIDTH: Expr = ['interpolate', ['linear'], ['zoom'],
   9.5, ['case', SECONDARY, 1 * THIN, 1], 12, ['case', SECONDARY, 2.5 * THIN, 2.5], 15, ['case', SECONDARY, 3.5 * THIN, 3.5]]
@@ -52,8 +55,9 @@ const COLOR: Expr = ['match', ['get', 'kind'],
   ...Object.entries(DETAIL_KIND_COLOR).flatMap(([k, c]) => [k, c]), DETAIL_KIND_COLOR.other]
 // Circuits are coloured by the aircraft group they are for (a club map draws powered, glider and ultralight circuits
 // in different colours); no group = everyone = the powered colour.
-const CIRCUIT_COLOR: Expr = ['match', ['get', 'aircraft'],
-  ...CIRCUIT_GROUPS.filter(g => g !== 'powered').flatMap(g => [g, CIRCUIT_GROUP_COLOR[g]]), CIRCUIT_GROUP_COLOR.powered]
+// A fly-in route is not a circuit: it has its own colour whatever it is for (pink, DETAIL_KIND_COLOR.arrival_route).
+const CIRCUIT_COLOR: Expr = ['case', ARRIVAL, DETAIL_KIND_COLOR.arrival_route, ['match', ['get', 'aircraft'],
+  ...CIRCUIT_GROUPS.filter(g => g !== 'powered').flatMap(g => [g, CIRCUIT_GROUP_COLOR[g]]), CIRCUIT_GROUP_COLOR.powered]]
 const DASHED: Expr = ['any', ['get', 'approximate'], ['get', 'pending']]
 const IS_AREA: Expr = ['in', ['get', 'kind'], ['literal', [...AREA_KINDS]]]
 // An arrival route (the fly-in drawn on a club map) is drawn, labelled, switched and focused like a circuit
@@ -84,14 +88,13 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
   { id: 'ad-details-line-dashed', type: 'line', group: 'details', minzoom: DETAILS_MIN_ZOOM,
     filter: ['all', LINE, NOT_CIRCUIT, ['!', IS_HOLDING], DASHED],
     layout: { 'line-join': 'round' }, paint: { 'line-color': COLOR, 'line-width': 1.8, 'line-dasharray': [2, 2] } },
-  // Circuits ("Traffic circuits"): a white casing under each SOLID (exact, reviewed) leg so it reads on green land and beside amber areas; a dashed one needs none, its dashes already say approximate
-  { id: 'ad-circuit-casing', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!', DASHED]],
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#ffffff', 'line-opacity': 0.85, 'line-width': ['interpolate', ['linear'], ['zoom'], 9.5, 2.4, 12, 4.9, 15, 5.9] } },
+  // Circuits ("Traffic circuits") are always dashed, so the runway, the roads and the other circuits show through the gaps where
+  // several patterns overlap (a casing under them made a club field with three patterns unreadable). Exact, reviewed legs have
+  // long dashes; an approximate or unreviewed one has shorter dashes with wider gaps and is fainter.
   { id: 'ad-circuit-line', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!', DASHED]],
-    layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': CIRCUIT_COLOR, 'line-width': CIRCUIT_WIDTH } },
+    layout: { 'line-join': 'round' }, paint: { 'line-color': CIRCUIT_COLOR, 'line-width': CIRCUIT_WIDTH, 'line-dasharray': [3, 1.6], 'line-opacity': ROUTE_FAINT } },
   { id: 'ad-circuit-line-dashed', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN, DASHED],
-    layout: { 'line-join': 'round' }, paint: { 'line-color': CIRCUIT_COLOR, 'line-width': CIRCUIT_WIDTH, 'line-dasharray': [2, 2] } },
+    layout: { 'line-join': 'round' }, paint: { 'line-color': CIRCUIT_COLOR, 'line-width': CIRCUIT_WIDTH, 'line-dasharray': [2, 2.4], 'line-opacity': ['case', ARRIVAL, 0.5, 0.8] } },
   // A circuit known only by its direction: "after take-off, turn left/right". Lighter while unreviewed.
   { id: 'ad-circuit-turn', type: 'line', group: 'circuits', minzoom: DIRECTION_ZOOM,
     filter: ['all', LINE, IS_CIRCUIT, ['==', ['get', 'role'], 'turn']],
@@ -114,7 +117,7 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
     paint: { 'text-color': CIRCUIT_COLOR, 'text-halo-color': 'rgba(255,255,255,0.9)', 'text-halo-width': 1.6 } },
   { id: 'ad-circuit-label', type: 'symbol', group: 'circuits', minzoom: LABEL_ZOOM,
     filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!=', ['get', 'clabel'], '']],
-    layout: { 'symbol-placement': 'line', 'symbol-spacing': 260, 'text-field': ['get', 'clabel'], 'text-font': CIRCUIT_LABEL_FONT,
+    layout: { 'symbol-placement': 'line', 'symbol-spacing': 420, 'text-field': ['get', 'clabel'], 'text-font': CIRCUIT_LABEL_FONT,
       'text-size': CIRCUIT_LABEL_SIZE, 'text-offset': [0, -1], 'text-keep-upright': true, 'text-max-angle': 30 },
     paint: { 'text-color': CIRCUIT_LABEL_COLOR, 'text-halo-color': HALO, 'text-halo-width': 2.4, 'text-halo-blur': 0.3 } },
   { id: 'ad-circuit-turn-label', type: 'symbol', group: 'circuits', minzoom: LABEL_ZOOM,
@@ -168,13 +171,19 @@ export function staticColorLayers(specs: readonly DetailLayerSpec[] = DETAIL_LAY
     const groupKeys = [...Object.keys(l.paint)].filter(k => l.paint[k] === CIRCUIT_COLOR)
     if (groupKeys.length) {
       const special = CIRCUIT_GROUPS.filter(g => g !== 'powered')
-      return CIRCUIT_GROUPS.map(g => ({
+      const notRoute: Expr = ['!', ARRIVAL]
+      return [...CIRCUIT_GROUPS.map(g => ({
         ...l,
         id: `${l.id}-${g}`,
-        filter: ['all', l.filter, g === 'powered' ? ['!', ['in', ['get', 'aircraft'], ['literal', special]]]
+        filter: ['all', l.filter, notRoute, g === 'powered' ? ['!', ['in', ['get', 'aircraft'], ['literal', special]]]
           : ['==', ['get', 'aircraft'], g]] as Expr,
         paint: { ...l.paint, ...Object.fromEntries(groupKeys.map(k => [k, CIRCUIT_GROUP_COLOR[g]])) },
-      }))
+      })), {
+        ...l,
+        id: `${l.id}-route`,
+        filter: ['all', l.filter, ARRIVAL] as Expr,
+        paint: { ...l.paint, ...Object.fromEntries(groupKeys.map(k => [k, DETAIL_KIND_COLOR.arrival_route])) },
+      }]
     }
     const keys = [...Object.keys(l.paint)].filter(k => l.paint[k] === COLOR)
     if (!keys.length) return [l]
@@ -205,7 +214,7 @@ export function layerFilter(l: DetailLayerSpec, focus: CircuitFocus | null, rele
   if (l.group === 'reportingPoints' && relevant) return ['all', l.filter, ['in', ['get', 'aerodrome'], ['literal', [...relevant]]]]
   // the direction marks of a loop flown both ways exist only for a chosen runway end, and only at that aerodrome
   if (l.id === 'ad-circuit-dirmarks') {
-    return focus ? ['all', l.filter, ['==', ['get', 'aerodrome'], focus.aerodrome], ['in', `|${focus.runway}|`, ['get', 'rwys']]] : ['all', l.filter, ['==', 0, 1]]
+    return focus ? ['all', l.filter, ['==', ['get', 'aerodrome'], focus.aerodrome], ['in', `|${focus.runway}|`, ['get', 'rwys']]] : ['all', l.filter, ['==', ['get', 'role'], 'hidden-until-a-runway-end-is-chosen']]      // always false, in expression form: a bare ['==', 0, 1] can make a native renderer read the whole filter as the old filter syntax
   }
   if (!focus || l.group !== 'circuits') return l.filter
   return ['all', l.filter, ['any', ['!=', ['get', 'aerodrome'], focus.aerodrome], ['!', ['has', 'rwys']],
@@ -264,7 +273,7 @@ export function buildDetailsMapData(
         ...f.properties,
         ...(isBothWaysLoop(f as DetailFeature) ? { oneWay: false } : {}),      // flown the other way round from the other end: no one-way marks of its own
         label: area ? [area, f.properties.pending ? '(unreviewed)' : null].filter(Boolean).join('\n') : '',
-        clabel: f.properties.kind === 'circuit_leg' || f.properties.kind === 'arrival_route' ? circuitLabel(f.properties.name) : '',
+        clabel: f.properties.kind === 'circuit_leg' || f.properties.kind === 'arrival_route' ? circuitLabel(f.properties.name, f.properties.aircraft) : '',
         // flat copies for the tap popup (a rendered feature returns nested values as JSON text)
         limits: formatLimits(f.properties.floor, f.properties.ceiling) ?? '',
         below: belowText(f.properties.floor, f.properties.ceiling) ?? '',
@@ -306,9 +315,19 @@ export function belowText(floor: DetailProps['floor'], ceiling: DetailProps['cei
 }
 
 /** Map label of a circuit, short so it fits along the line: "RWY 06 RH · RWY 24 LH" -> "06 RH · 24 LH",
- *  "ESMI UL-landningsvarv" -> "UL-landningsvarv". */
-export function circuitLabel(name: string | null): string {
-  return (name ?? '').replace(/^[A-Z]{4}\s+/, '').replace(/\bRWY\s*/gi, '').trim()
+ *  "ESMI UL-landningsvarv" -> "UL-landningsvarv". A name of the merged form "Traffic circuit gliders (runway 12) — RWY 12 RH · RWY 30 LH"
+ *  becomes "gliders · 12 RH · 30 LH": the sentence-long name is on the card, the map keeps who it is for and the hands. */
+export function circuitLabel(name: string | null, aircraft?: string | null): string {
+  const clean = (t: string) => t.replace(/^[A-Z]{4}\s+/, '').replace(/\bRWY\s*/gi, '').trim()
+  const [head, tail] = (name ?? '').split(/\s+\u2014\s+/, 2)
+  if (!tail) {
+    // an unmerged name ("Traffic circuit powered aircraft (runway 12)"): the group is the label, the runway is in the hands on the card
+    const m = /^Traffic circuit\s+(.*?)\s*(?:\([^)]*\))?\s*$/i.exec(head ?? '')
+    return m ? clean(m[1]!) : clean(head ?? '')
+  }
+  const who = (aircraft ? ({ powered: 'powered', glider: 'gliders', ultralight: 'UL', helicopter: 'helicopters', gyro: 'gyros' } as Record<string, string>)[aircraft] : null)
+    ?? clean((head ?? '').replace(/^Traffic circuit\s*/i, '').replace(/\s*\([^)]*\)\s*$/, ''))
+  return [who, clean(tail)].filter(Boolean).join(' \u00B7 ')
 }
 
 export { idOf as aerodromeIdOf }
