@@ -172,3 +172,24 @@ describe('reporting point labels and landmark labels', () => {
     expect(JSON.stringify(l.filter)).not.toContain('on_landmark')
   })
 })
+
+describe('direction marks for a loop flown both ways', () => {
+  const spec = DETAIL_LAYERS.find(l => l.id === 'ad-circuit-dirmarks')!
+
+  it('are hidden until a runway end is chosen, then shown for that end at that aerodrome only', () => {
+    expect(JSON.stringify(layerFilter(spec, null))).toContain('["==",0,1]')
+    const f = JSON.stringify(layerFilter(spec, { aerodrome: 'ESTT', runway: '03' }))
+    expect(f).toContain('"ESTT"')
+    expect(f).toContain('|03|')
+    expect(f).not.toContain('["==",0,1]')
+  })
+
+  it('no other circuit layer draws a direction feature (they are schematic) and the map data carries them', () => {
+    const others = DETAIL_LAYERS.filter(l => l.group === 'circuits' && l.id !== 'ad-circuit-dirmarks' && l.id !== 'ad-circuit-turn' && l.id !== 'ad-circuit-turn-label')
+    for (const l of others) expect(JSON.stringify(l.filter)).toContain('"schematic"')
+    const fc = buildDetailsMapData([{ type: 'Feature', geometry: { type: 'LineString', coordinates: [[13, 55], [13.1, 55], [13.1, 55.1], [13, 55.1], [13, 55]] },
+      properties: { aerodrome: 'ESTT', kind: 'circuit_leg', name: 'RWY 03 RH · RWY 21 LH', remarks: null, floor: null, ceiling: null, approximate: true, accuracy_m: null, pending: false } as never }], [])
+    expect(fc.features.filter(f => f.properties.role === 'dir')).toHaveLength(2)
+    expect(fc.features).toHaveLength(3)
+  })
+})

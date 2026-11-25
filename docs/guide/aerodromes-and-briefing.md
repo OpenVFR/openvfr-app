@@ -76,7 +76,12 @@ them (from zoom 9, with more detail as you zoom in):
   turn arrow, which only gives the direction, is drawn fainter than a
   drawn circuit; circuits for gliders, ultralights, helicopters and
   gyros are drawn thinner than the one for ordinary powered aircraft, so
-  the main circuit stands out where several overlap. Heights are written
+  the main circuit stands out where several overlap. A pattern that is flown
+  the other way round from the opposite runway end (its label names both,
+  "RWY 03 RH · RWY 21 LH") has no direction marks of its own; tap a runway
+  end in the aerodrome card and the pattern shows marks running the way
+  that end flies it. A dashed line is approximate or not yet reviewed; the
+  noise areas are drawn as a faint tint with an outline. Heights are written
   as the sources write them: above mean sea level as "AMSL" (a height on the
   QNH) and above the ground as "AGL". A height whose
   source gives no reference (above the field or above sea level) says so

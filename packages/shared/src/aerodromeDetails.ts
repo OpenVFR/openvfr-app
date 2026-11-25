@@ -128,7 +128,7 @@ export interface DetailProps {
   /** Holding: the orbit flown there (left = counter-clockwise). */
   direction?: 'left' | 'right'
   /** Parts of a turn arrow: the curved line with its head ('turn'), or the point its label sits on ('label'). */
-  role?: 'turn' | 'label'
+  role?: 'turn' | 'label' | 'dir'
   /** Runway ends the circuit is for, as "|06|24|", so the map can show only the circuits of a chosen runway. */
   rwys?: string
   /** false: a drawn pattern flown both ways (06 right-hand = 24 left-hand), so no direction chevrons. */
@@ -569,6 +569,42 @@ export function holdingOrbit(center: [number, number], direction: 'left' | 'righ
   const barb = (side: number) => pt(tip[0] - h * tx + side * 0.6 * h * nx, tip[1] - h * ty + side * 0.6 * h * ny)
   return [{ type: 'LineString', coordinates: arc },
     { type: 'LineString', coordinates: [barb(1), pt(tip[0], tip[1]), barb(-1)] }]
+}
+
+// ── Direction of a circuit flown both ways ────────────────────────────────
+
+/** The hand each runway end flies a loop, read from its name ("RWY 03 RH · RWY 21 LH", "… — RWY 12 RH · RWY 30 LH"): { '03': 'right', '21': 'left' }. */
+export function circuitEndHands(name: string | null | undefined): Record<string, 'left' | 'right'> {
+  const out: Record<string, 'left' | 'right'> = {}
+  for (const m of String(name ?? '').matchAll(/\bRWY\s*(\d{2}[LRC]?)\s+(RH|LH)\b/gi)) out[m[1]!.toUpperCase()] = m[2]!.toUpperCase() === 'LH' ? 'left' : 'right'
+  return out
+}
+
+/** Shoelace area of a polyline closed back to its start: positive = counter-clockwise (x east, y north). */
+const signedArea = (c: readonly (readonly number[])[]): number =>
+  c.reduce((s, p, i) => { const q = c[(i + 1) % c.length]!; return s + (p[0]! * q[1]! - q[0]! * p[1]!) }, 0) / 2
+
+/**
+ * A drawn loop that names both ends of a runway with their hands is ONE outline flown in opposite directions from the two ends, so it has no direction of its own. For each such end this
+ * returns the same line turned to run the way that end flies it (left-hand = counter-clockwise), as hidden direction marks (role 'dir', `rwys` = that end): the map shows them only for the
+ * runway end a person has chosen in the aerodrome card (see `layerFilter`). Loops with one direction (`oneWay`), open lines and loops that name fewer than two hands give nothing.
+ */
+export function directionFeatures(details: readonly DetailFeature[]): DetailFeature[] {
+  const out: DetailFeature[] = []
+  for (const f of details) {
+    const p = f.properties
+    if (p.kind !== 'circuit_leg' || p.schematic || p.oneWay === true || f.geometry.type !== 'LineString') continue
+    const hands = Object.entries(circuitEndHands(p.name)).sort(([a], [b]) => a.localeCompare(b))      // by runway end: a plain object would put '21' before '03'
+    if (hands.length < 2) continue
+    const c = f.geometry.coordinates
+    if (c.length < 4 || Math.hypot(c[0]![0]! - c[c.length - 1]![0]!, c[0]![1]! - c[c.length - 1]![1]!) > 0.002) continue      // not a closed loop (ends within ~150 m)
+    const ccw = signedArea(c) > 0
+    for (const [end, hand] of hands) {
+      out.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: (hand === 'left') === ccw ? c : [...c].reverse() },
+        properties: { ...p, role: 'dir', schematic: true, rwys: `|${end}|`, oneWay: true, name: '', remarks: null } })
+    }
+  }
+  return out
 }
 
 /** Orbit features for the holding points in a details file that state a direction (role 'turn'). */

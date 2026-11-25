@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   parseAerodromeDetails, localInfo, formatCircuit, formatLimits, circuitTurnArrow, schematicCircuitFeatures, hasLocalInfo, holdingOrbit,
   holdingOrbitFeatures, ORBIT_RADIUS_NM, localAreaInfo, RULE_GROUP_IDS, RULE_GROUP_LABEL,
-  TURN_STRAIGHT_NM, TURN_RADIUS_NM, endsOfDesignator, runwayEndsOf, circuitEndGroups, circuitNotes, heightRefLabel, unstatedCircuitEnds, unstatedCircuitNote, type DetailFeature,
+  TURN_STRAIGHT_NM, TURN_RADIUS_NM, endsOfDesignator, runwayEndsOf, circuitEndGroups, circuitNotes, heightRefLabel, circuitEndHands, directionFeatures, unstatedCircuitEnds, unstatedCircuitNote, type DetailFeature,
 } from './aerodromeDetails'
 import type { LineString } from 'geojson'
 
@@ -300,5 +300,35 @@ describe('circuit heights and notes', () => {
 describe('heightRefLabel', () => {
   it('reads QNH as AMSL and AAL as AGL, and leaves anything else', () => {
     expect([heightRefLabel('QNH'), heightRefLabel('qnh'), heightRefLabel('AAL'), heightRefLabel('MSL'), heightRefLabel(null)]).toEqual(['AMSL', 'AMSL', 'AGL', 'MSL', null])
+  })
+})
+
+describe('direction of a loop flown both ways', () => {
+  const loopFeature = (name: string, coords: number[][], extra: Record<string, unknown> = {}): DetailFeature => ({
+    type: 'Feature', geometry: { type: 'LineString', coordinates: coords },
+    properties: { aerodrome: 'ESTT', kind: 'circuit_leg', name, remarks: null, floor: null, ceiling: null, approximate: true, accuracy_m: null, pending: false, ...extra } as DetailFeature['properties'],
+  })
+  const CCW = [[13.0, 55.0], [13.1, 55.0], [13.1, 55.1], [13.0, 55.1], [13.0, 55.0]]            // counter-clockwise, closed
+
+  it('reads the hand of each runway end from the name', () => {
+    expect(circuitEndHands('RWY 03 RH · RWY 21 LH')).toEqual({ '03': 'right', '21': 'left' })
+    expect(circuitEndHands('Traffic circuit gliders (runway 12) — RWY 12 RH · RWY 30 LH')).toEqual({ '12': 'right', '30': 'left' })
+    expect(circuitEndHands('Traffic circuit UL (runway 30)')).toEqual({})
+  })
+
+  it('gives one hidden direction line per end, each running its own way (left = counter-clockwise)', () => {
+    const got = directionFeatures([loopFeature('RWY 03 RH · RWY 21 LH', CCW)])
+    expect(got.map(f => f.properties.rwys)).toEqual(['|03|', '|21|'])
+    const of = (end: string) => got.find(f => f.properties.rwys === `|${end}|`)!.geometry as LineString
+    expect(of('21')).toEqual({ type: 'LineString', coordinates: CCW })                                // 21 is left-hand: as drawn (counter-clockwise)
+    expect(of('03').coordinates).toEqual([...CCW].reverse())                                          // 03 is right-hand: reversed
+    expect(got.every(f => f.properties.role === 'dir' && f.properties.schematic === true && f.properties.name === '')).toBe(true)
+  })
+
+  it('does not touch a one-way loop, an open line, or a loop that names fewer than two hands', () => {
+    expect(directionFeatures([loopFeature('RWY 03 RH · RWY 21 LH', CCW, { oneWay: true })])).toEqual([])
+    expect(directionFeatures([loopFeature('RWY 03 RH · RWY 21 LH', [[13, 55], [13.1, 55], [13.2, 55.2], [13.3, 55.3]])])).toEqual([])
+    expect(directionFeatures([loopFeature('Traffic circuit UL (runway 30)', CCW)])).toEqual([])
+    expect(directionFeatures([loopFeature('RWY 03 RH', CCW)])).toEqual([])
   })
 })

@@ -10,7 +10,7 @@
  */
 import type { Feature, FeatureCollection, Geometry } from 'geojson'
 import {
-  AREA_KINDS, CIRCUIT_GROUPS, CIRCUIT_GROUP_COLOR, DETAIL_KIND_COLOR, formatLimit, formatLimits, holdingOrbitFeatures, schematicCircuitFeatures,
+  AREA_KINDS, CIRCUIT_GROUPS, CIRCUIT_GROUP_COLOR, DETAIL_KIND_COLOR, directionFeatures, formatLimit, formatLimits, holdingOrbitFeatures, schematicCircuitFeatures,
   type DetailKind, type DetailProps,
 } from './aerodromeDetails'
 
@@ -73,7 +73,7 @@ export const LABEL_ANCHORS: ('top' | 'bottom' | 'right' | 'left' | 'top-right' |
 export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
   // Areas, taxiways, parking, extra reporting points
   { id: 'ad-details-fill', type: 'fill', group: 'details', minzoom: DETAILS_MIN_ZOOM, filter: ['all', POLY, IS_AREA],
-    paint: { 'fill-color': COLOR, 'fill-opacity': ['case', ['get', 'pending'], 0.05, 0.1] } },       // a warning area, not a path: it must not outshout the circuits drawn over it
+    paint: { 'fill-color': COLOR, 'fill-opacity': ['case', ['get', 'pending'], 0.025, 0.05] } },       // a warning area, not a path: it must not outshout the circuits drawn over it
   { id: 'ad-details-outline', type: 'line', group: 'details', minzoom: DETAILS_MIN_ZOOM, filter: ['all', POLY, ['!', DASHED]],
     paint: { 'line-color': COLOR, 'line-width': 1.2 } },
   { id: 'ad-details-outline-dashed', type: 'line', group: 'details', minzoom: DETAILS_MIN_ZOOM, filter: ['all', POLY, DASHED],
@@ -84,14 +84,10 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
   { id: 'ad-details-line-dashed', type: 'line', group: 'details', minzoom: DETAILS_MIN_ZOOM,
     filter: ['all', LINE, NOT_CIRCUIT, ['!', IS_HOLDING], DASHED],
     layout: { 'line-join': 'round' }, paint: { 'line-color': COLOR, 'line-width': 1.8, 'line-dasharray': [2, 2] } },
-  // Circuits ("Traffic circuits"): a white casing under each drawn leg, so a circuit reads on green land and beside amber areas
+  // Circuits ("Traffic circuits"): a white casing under each SOLID (exact, reviewed) leg so it reads on green land and beside amber areas; a dashed one needs none, its dashes already say approximate
   { id: 'ad-circuit-casing', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!', DASHED]],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#ffffff', 'line-opacity': 0.85, 'line-width': ['interpolate', ['linear'], ['zoom'], 9.5, 2.4, 12, 4.9, 15, 5.9] } },
-  // a dashed (approximate or unreviewed) circuit gets a casing with the same dashes, so the gaps show the map and it does not read as a line on a white band
-  { id: 'ad-circuit-casing-dashed', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN, DASHED],
-    layout: { 'line-join': 'round' },
-    paint: { 'line-color': '#ffffff', 'line-opacity': 0.85, 'line-width': ['interpolate', ['linear'], ['zoom'], 9.5, 2.4, 12, 4.9, 15, 5.9], 'line-dasharray': [1.2, 0.9] } },
   { id: 'ad-circuit-line', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!', DASHED]],
     layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': CIRCUIT_COLOR, 'line-width': CIRCUIT_WIDTH } },
   { id: 'ad-circuit-line-dashed', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN, DASHED],
@@ -110,6 +106,12 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
       'text-field': '>', 'text-font': FONT, 'text-size': ['case', SECONDARY, 11, 13],
       'text-keep-upright': false, 'text-allow-overlap': true, 'text-ignore-placement': true },
     paint: { 'text-color': CIRCUIT_COLOR, 'text-halo-color': 'rgba(0,0,0,0.6)', 'text-halo-width': 1 } },
+  // The direction of a loop flown both ways, for the runway end chosen in the card: hidden until an end is chosen (layerFilter), then marks running the way that end flies it
+  { id: 'ad-circuit-dirmarks', type: 'symbol', group: 'circuits', minzoom: DIRECTION_ZOOM,
+    filter: ['all', LINE, IS_CIRCUIT, ['==', ['get', 'role'], 'dir']],
+    layout: { 'symbol-placement': 'line', 'symbol-spacing': ['interpolate', ['linear'], ['zoom'], 10.5, 110, 13, 170, 16, 260],
+      'text-field': '>', 'text-font': FONT, 'text-size': 15, 'text-keep-upright': false, 'text-allow-overlap': true, 'text-ignore-placement': true },
+    paint: { 'text-color': CIRCUIT_COLOR, 'text-halo-color': 'rgba(255,255,255,0.9)', 'text-halo-width': 1.6 } },
   { id: 'ad-circuit-label', type: 'symbol', group: 'circuits', minzoom: LABEL_ZOOM,
     filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!=', ['get', 'clabel'], '']],
     layout: { 'symbol-placement': 'line', 'symbol-spacing': 260, 'text-field': ['get', 'clabel'], 'text-font': CIRCUIT_LABEL_FONT,
@@ -201,6 +203,10 @@ export function layerFilter(l: DetailLayerSpec, focus: CircuitFocus | null, rele
   // Reporting points of club maps and charts belong to one airfield's arrivals: drawn only for the aerodromes in `relevant` (the one
   // whose card was last opened). `undefined` = no such rule (all drawn).
   if (l.group === 'reportingPoints' && relevant) return ['all', l.filter, ['in', ['get', 'aerodrome'], ['literal', [...relevant]]]]
+  // the direction marks of a loop flown both ways exist only for a chosen runway end, and only at that aerodrome
+  if (l.id === 'ad-circuit-dirmarks') {
+    return focus ? ['all', l.filter, ['==', ['get', 'aerodrome'], focus.aerodrome], ['in', `|${focus.runway}|`, ['get', 'rwys']]] : ['all', l.filter, ['==', 0, 1]]
+  }
   if (!focus || l.group !== 'circuits') return l.filter
   return ['all', l.filter, ['any', ['!=', ['get', 'aerodrome'], focus.aerodrome], ['!', ['has', 'rwys']],
     ['in', `|${focus.runway}|`, ['get', 'rwys']]]]
@@ -247,7 +253,7 @@ export function buildDetailsMapData(
 ): FeatureCollection<Geometry, DetailProps & { label: string; clabel: string }> {
   const drawn = new Set(details.filter(f => f.properties.kind === 'circuit_leg' && f.geometry.type === 'LineString')
     .map(f => f.properties.aerodrome))
-  const all = [...details, ...schematicCircuitFeatures(aerodromes, drawn), ...holdingOrbitFeatures(details)]
+  const all = [...details, ...schematicCircuitFeatures(aerodromes, drawn), ...holdingOrbitFeatures(details), ...directionFeatures(details)]
   return {
     type: 'FeatureCollection',
     features: all.map(f => {
