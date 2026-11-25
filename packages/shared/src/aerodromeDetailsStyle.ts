@@ -101,7 +101,9 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
   // chevrons along drawn legs, unless the pattern is flown both ways (its label names both runway directions)
   { id: 'ad-circuit-chevrons', type: 'symbol', group: 'circuits', minzoom: DIRECTION_ZOOM,
     filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!=', ['get', 'oneWay'], false]],
-    layout: { 'symbol-placement': 'line', 'symbol-spacing': 90, 'text-field': '>', 'text-font': FONT, 'text-size': 14,
+    // a few direction marks per leg, not a row: sparse when zoomed out, wider apart as the legs grow on screen, and smaller on the circuits for other aircraft groups
+    layout: { 'symbol-placement': 'line', 'symbol-spacing': ['interpolate', ['linear'], ['zoom'], 10.5, 200, 13, 300, 16, 420],
+      'text-field': '>', 'text-font': FONT, 'text-size': ['case', SECONDARY, 11, 13],
       'text-keep-upright': false, 'text-allow-overlap': true, 'text-ignore-placement': true },
     paint: { 'text-color': CIRCUIT_COLOR, 'text-halo-color': 'rgba(0,0,0,0.6)', 'text-halo-width': 1 } },
   { id: 'ad-circuit-label', type: 'symbol', group: 'circuits', minzoom: LABEL_ZOOM,
