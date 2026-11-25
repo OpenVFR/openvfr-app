@@ -191,5 +191,9 @@ describe('direction marks for a loop flown both ways', () => {
       properties: { aerodrome: 'ESTT', kind: 'circuit_leg', name: 'RWY 03 RH · RWY 21 LH', remarks: null, floor: null, ceiling: null, approximate: true, accuracy_m: null, pending: false } as never }], [])
     expect(fc.features.filter(f => f.properties.role === 'dir')).toHaveLength(2)
     expect(fc.features).toHaveLength(3)
+    // an older published file marked this loop one-way: the map data overrides it, so no one-way marks are drawn for it
+    const old = buildDetailsMapData([{ type: 'Feature', geometry: { type: 'LineString', coordinates: [[13, 55], [13.1, 55], [13.1, 55.1], [13, 55.1], [13, 55]] },
+      properties: { aerodrome: 'ESTT', kind: 'circuit_leg', name: 'RWY 03 RH · RWY 21 LH', oneWay: true, remarks: null, floor: null, ceiling: null, approximate: true, accuracy_m: null, pending: false } as never }], [])
+    expect(old.features.find(f => f.properties.role !== 'dir')!.properties.oneWay).toBe(false)
   })
 })

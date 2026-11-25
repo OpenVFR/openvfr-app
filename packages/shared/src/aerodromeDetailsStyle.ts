@@ -10,8 +10,8 @@
  */
 import type { Feature, FeatureCollection, Geometry } from 'geojson'
 import {
-  AREA_KINDS, CIRCUIT_GROUPS, CIRCUIT_GROUP_COLOR, DETAIL_KIND_COLOR, directionFeatures, formatLimit, formatLimits, holdingOrbitFeatures, schematicCircuitFeatures,
-  type DetailKind, type DetailProps,
+  AREA_KINDS, CIRCUIT_GROUPS, CIRCUIT_GROUP_COLOR, DETAIL_KIND_COLOR, directionFeatures, isBothWaysLoop, formatLimit, formatLimits, holdingOrbitFeatures, schematicCircuitFeatures,
+  type DetailFeature, type DetailKind, type DetailProps,
 } from './aerodromeDetails'
 
 /** A MapLibre expression (typed loosely: this package depends on neither renderer). */
@@ -262,6 +262,7 @@ export function buildDetailsMapData(
       const area = named ? mapAreaLabel(f.properties, false) : ''
       return { ...f, properties: {
         ...f.properties,
+        ...(isBothWaysLoop(f as DetailFeature) ? { oneWay: false } : {}),      // flown the other way round from the other end: no one-way marks of its own
         label: area ? [area, f.properties.pending ? '(unreviewed)' : null].filter(Boolean).join('\n') : '',
         clabel: f.properties.kind === 'circuit_leg' || f.properties.kind === 'arrival_route' ? circuitLabel(f.properties.name) : '',
         // flat copies for the tap popup (a rendered feature returns nested values as JSON text)

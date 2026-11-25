@@ -325,8 +325,11 @@ describe('direction of a loop flown both ways', () => {
     expect(got.every(f => f.properties.role === 'dir' && f.properties.schematic === true && f.properties.name === '')).toBe(true)
   })
 
-  it('does not touch a one-way loop, an open line, or a loop that names fewer than two hands', () => {
-    expect(directionFeatures([loopFeature('RWY 03 RH · RWY 21 LH', CCW, { oneWay: true })])).toEqual([])
+  it('treats a loop that names two hands as flown both ways even when a data file says one-way (older published files do)', () => {
+    expect(directionFeatures([loopFeature('RWY 03 RH · RWY 21 LH', CCW, { oneWay: true })])).toHaveLength(2)
+  })
+
+  it('does not touch an open line, or a loop that names fewer than two hands', () => {
     expect(directionFeatures([loopFeature('RWY 03 RH · RWY 21 LH', [[13, 55], [13.1, 55], [13.2, 55.2], [13.3, 55.3]])])).toEqual([])
     expect(directionFeatures([loopFeature('Traffic circuit UL (runway 30)', CCW)])).toEqual([])
     expect(directionFeatures([loopFeature('RWY 03 RH', CCW)])).toEqual([])

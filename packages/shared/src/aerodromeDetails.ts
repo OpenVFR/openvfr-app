@@ -584,20 +584,26 @@ export function circuitEndHands(name: string | null | undefined): Record<string,
 const signedArea = (c: readonly (readonly number[])[]): number =>
   c.reduce((s, p, i) => { const q = c[(i + 1) % c.length]!; return s + (p[0]! * q[1]! - q[0]! * p[1]!) }, 0) / 2
 
+/** A drawn circuit loop whose name gives two or more runway ends their hands ("RWY 03 RH · RWY 21 LH"): one outline flown in opposite directions, whatever a data file says about `oneWay`. */
+export function isBothWaysLoop(f: DetailFeature): boolean {
+  const p = f.properties
+  if (p.kind !== 'circuit_leg' || p.schematic || f.geometry.type !== 'LineString' || Object.keys(circuitEndHands(p.name)).length < 2) return false
+  const c = f.geometry.coordinates
+  return c.length >= 4 && Math.hypot(c[0]![0]! - c[c.length - 1]![0]!, c[0]![1]! - c[c.length - 1]![1]!) <= 0.002      // closed within ~150 m
+}
+
 /**
  * A drawn loop that names both ends of a runway with their hands is ONE outline flown in opposite directions from the two ends, so it has no direction of its own. For each such end this
  * returns the same line turned to run the way that end flies it (left-hand = counter-clockwise), as hidden direction marks (role 'dir', `rwys` = that end): the map shows them only for the
- * runway end a person has chosen in the aerodrome card (see `layerFilter`). Loops with one direction (`oneWay`), open lines and loops that name fewer than two hands give nothing.
+ * runway end a person has chosen in the aerodrome card (see `layerFilter`). Open lines and loops that name fewer than two hands give nothing (a loop that does name them is never one-way, see `isBothWaysLoop`).
  */
 export function directionFeatures(details: readonly DetailFeature[]): DetailFeature[] {
   const out: DetailFeature[] = []
   for (const f of details) {
     const p = f.properties
-    if (p.kind !== 'circuit_leg' || p.schematic || p.oneWay === true || f.geometry.type !== 'LineString') continue
+    if (!isBothWaysLoop(f)) continue
     const hands = Object.entries(circuitEndHands(p.name)).sort(([a], [b]) => a.localeCompare(b))      // by runway end: a plain object would put '21' before '03'
-    if (hands.length < 2) continue
-    const c = f.geometry.coordinates
-    if (c.length < 4 || Math.hypot(c[0]![0]! - c[c.length - 1]![0]!, c[0]![1]! - c[c.length - 1]![1]!) > 0.002) continue      // not a closed loop (ends within ~150 m)
+    const c = (f.geometry as LineString).coordinates
     const ccw = signedArea(c) > 0
     for (const [end, hand] of hands) {
       out.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: (hand === 'left') === ccw ? c : [...c].reverse() },
