@@ -293,7 +293,7 @@ describe('circuit heights and notes', () => {
       properties: { aerodrome, kind: 'circuit_leg', name: 'Traffic circuit gliders (runway 12)', remarks, schematic } as DetailFeature['properties'],
     })
     expect(circuitNotes([f('ESMI', 'At least 150 m AGL on downwind.'), f('ESMI', 'At least 150 m AGL on downwind.'), f('ESMI', null), f('ESMI', 'x', true), f('ESXX', 'y')], 'ESMI'))
-      .toEqual(['Traffic circuit gliders (runway 12): At least 150 m AGL on downwind.'])
+      .toEqual(['Gliders: At least 150 m AGL on downwind.'])
   })
 })
 
@@ -333,5 +333,14 @@ describe('direction of a loop flown both ways', () => {
     expect(directionFeatures([loopFeature('RWY 03 RH · RWY 21 LH', [[13, 55], [13.1, 55], [13.2, 55.2], [13.3, 55.3]])])).toEqual([])
     expect(directionFeatures([loopFeature('Traffic circuit UL (runway 30)', CCW)])).toEqual([])
     expect(directionFeatures([loopFeature('RWY 03 RH', CCW)])).toEqual([])
+  })
+})
+
+describe('circuit notes name who they are for, short', () => {
+  it('drops the runway part and the hands of a merged name', () => {
+    const f = (name: string): DetailFeature => ({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[0, 0], [1, 1]] },
+      properties: { aerodrome: 'ESMI', kind: 'circuit_leg', name, remarks: 'Downwind 1,000 ft MSL.' } } as unknown as DetailFeature)
+    expect(circuitNotes([f('Traffic circuit UL (runway 30) \u2014 RWY 30 RH \u00B7 RWY 12 LH'), f('Traffic circuit powered aircraft (runway 12)')], 'ESMI'))
+      .toEqual(['UL: Downwind 1,000 ft MSL.', 'Powered aircraft: Downwind 1,000 ft MSL.'])
   })
 })

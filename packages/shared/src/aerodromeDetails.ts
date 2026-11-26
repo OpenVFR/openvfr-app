@@ -401,13 +401,21 @@ export const heightRefLabel = (ref: string | null): string | null => (!ref ? nul
 
 const heightOf = (c: CircuitInfo): string | null => (c.altitude_ft ? `${c.altitude_ft} ft ${heightRefLabel(c.altitude_ref) ?? '(reference not stated)'}` : null)
 
+/** Who a circuit note is about, short: "Traffic circuit UL (runway 30) — RWY 30 RH · RWY 12 LH" -> "UL" (the runway ends and hands are in the circuit rows above). */
+function noteHead(name: string): string {
+  const head = name.split(/\s+\u2014\s+/)[0] ?? name
+  const m = /^(?:[A-Z]{4}\s+)?Traffic circuit\s+(.*?)\s*(?:\([^)]*\))?\s*$/i.exec(head)
+  const who = (m ? m[1]! : head).trim()
+  return who ? who.charAt(0).toUpperCase() + who.slice(1) : name
+}
+
 /** The notes the source gives a drawn circuit ("At least 150 m AGL on downwind"), each with the circuit's name, once. The card shows them under the circuit list. */
 export function circuitNotes(features: readonly DetailFeature[], aerodrome: string): string[] {
   const out: string[] = []
   for (const f of features) {
     const p = f.properties
     if (p.aerodrome !== aerodrome || p.kind !== 'circuit_leg' || p.schematic || f.geometry.type !== 'LineString' || !p.remarks) continue
-    const line = p.name ? `${p.name}: ${p.remarks}` : p.remarks
+    const line = p.name ? `${noteHead(p.name)}: ${p.remarks}` : p.remarks
     if (!out.includes(line)) out.push(line)
   }
   return out
