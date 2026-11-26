@@ -13,6 +13,7 @@ import {
   AREA_KINDS, CIRCUIT_GROUPS, CIRCUIT_GROUP_COLOR, DETAIL_KIND_COLOR, directionFeatures, isBothWaysLoop, formatLimit, formatLimits, holdingOrbitFeatures, schematicCircuitFeatures,
   type DetailFeature, type DetailKind, type DetailProps,
 } from './aerodromeDetails'
+import { RUNWAY_COLORS } from './featureColors'
 
 /** A MapLibre expression (typed loosely: this package depends on neither renderer). */
 export type Expr = readonly unknown[]
@@ -63,6 +64,7 @@ const IS_AREA: Expr = ['in', ['get', 'kind'], ['literal', [...AREA_KINDS]]]
 // An arrival route (the fly-in drawn on a club map) is drawn, labelled, switched and focused like a circuit
 const IS_CIRCUIT: Expr = ['in', ['get', 'kind'], ['literal', ['circuit_leg', 'arrival_route']]]
 const NOT_CIRCUIT: Expr = ['!', ['in', ['get', 'kind'], ['literal', ['circuit_leg', 'arrival_route']]]]
+const IS_RUNWAY: Expr = ['==', ['get', 'kind'], 'runway']
 const IS_HOLDING: Expr = ['==', ['get', 'kind'], 'holding']
 const IS_RP: Expr = ['==', ['get', 'kind'], 'reporting_point']
 const LINE: Expr = ['==', ['geometry-type'], 'LineString']
@@ -75,6 +77,26 @@ export const LABEL_ANCHORS: ('top' | 'bottom' | 'right' | 'left' | 'top-right' |
 
 /** Layers in drawing order (bottom first). */
 export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
+  // A runway the official data lacks (a parallel glider strip): drawn like the base layer's runways, under everything else of the details
+  { id: 'ad-runway-outline', type: 'line', group: 'details', minzoom: 11, filter: ['all', LINE, IS_RUNWAY], layout: { 'line-cap': 'butt' },
+    paint: { 'line-color': RUNWAY_COLORS.outline, 'line-width': ['interpolate', ['exponential', 2], ['zoom'],
+      11, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 1.5], 14, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 7], 17, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 32]],
+      'line-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 0.9] } },
+  // two layers by surface, each with a fixed colour (a colour computed from a feature property is refused by the iOS native renderer)
+  { id: 'ad-runway-line-paved', type: 'line', group: 'details', minzoom: 11, filter: ['all', LINE, IS_RUNWAY, ['in', ['get', 'surface'], ['literal', ['ASPH', 'CONC']]]], layout: { 'line-cap': 'butt' },
+    paint: { 'line-color': RUNWAY_COLORS.asphalt,
+      'line-width': ['interpolate', ['exponential', 2], ['zoom'],
+        11, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 1], 14, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 5], 17, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 24]],
+      'line-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1] } },
+  { id: 'ad-runway-line', type: 'line', group: 'details', minzoom: 11, filter: ['all', LINE, IS_RUNWAY, ['!', ['in', ['get', 'surface'], ['literal', ['ASPH', 'CONC']]]]], layout: { 'line-cap': 'butt' },
+    paint: { 'line-color': RUNWAY_COLORS.grass,
+      'line-width': ['interpolate', ['exponential', 2], ['zoom'],
+        11, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 1], 14, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 5], 17, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 24]],
+      'line-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1] } },
+  { id: 'ad-runway-end', type: 'symbol', group: 'details', minzoom: 12, filter: ['all', POINT, IS_RUNWAY],
+    layout: { 'text-field': ['get', 'end'], 'text-font': ['Noto Sans Medium'], 'text-size': ['interpolate', ['linear'], ['zoom'], 12, 8, 16, 14],
+      'text-rotate': ['coalesce', ['get', 'brg'], 0], 'text-rotation-alignment': 'map', 'text-pitch-alignment': 'map', 'text-allow-overlap': true, 'text-ignore-placement': true },
+    paint: { 'text-color': '#ffffff', 'text-halo-color': '#333840', 'text-halo-width': 1.4, 'text-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0, 13, 1] } },
   // Areas, taxiways, parking, extra reporting points
   { id: 'ad-details-fill', type: 'fill', group: 'details', minzoom: DETAILS_MIN_ZOOM, filter: ['all', POLY, IS_AREA],
     paint: { 'fill-color': COLOR, 'fill-opacity': ['case', ['get', 'pending'], 0.025, 0.05] } },       // a warning area, not a path: it must not outshout the circuits drawn over it
@@ -83,10 +105,10 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
   { id: 'ad-details-outline-dashed', type: 'line', group: 'details', minzoom: DETAILS_MIN_ZOOM, filter: ['all', POLY, DASHED],
     paint: { 'line-color': COLOR, 'line-width': 1.2, 'line-dasharray': [3, 2] } },
   { id: 'ad-details-line', type: 'line', group: 'details', minzoom: DETAILS_MIN_ZOOM,
-    filter: ['all', LINE, NOT_CIRCUIT, ['!', IS_HOLDING], ['!', DASHED]],
+    filter: ['all', LINE, NOT_CIRCUIT, ['!', IS_HOLDING], ['!', IS_RUNWAY], ['!', DASHED]],
     layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': COLOR, 'line-width': 1.8 } },
   { id: 'ad-details-line-dashed', type: 'line', group: 'details', minzoom: DETAILS_MIN_ZOOM,
-    filter: ['all', LINE, NOT_CIRCUIT, ['!', IS_HOLDING], DASHED],
+    filter: ['all', LINE, NOT_CIRCUIT, ['!', IS_HOLDING], ['!', IS_RUNWAY], DASHED],
     layout: { 'line-join': 'round' }, paint: { 'line-color': COLOR, 'line-width': 1.8, 'line-dasharray': [2, 2] } },
   // Circuits ("Traffic circuits") are always dashed, so the runway, the roads and the other circuits show through the gaps where
   // several patterns overlap (a casing under them made a club field with three patterns unreadable). Exact, reviewed legs have
@@ -158,7 +180,7 @@ const KINDS_OF_GROUP: Record<DetailLayerSpec['group'], DetailKind[]> = {
   circuits: ['circuit_leg', 'arrival_route'],
   holdings: ['holding'],
   reportingPoints: ['reporting_point'],
-  details: (Object.keys(DETAIL_KIND_COLOR) as DetailKind[]).filter(k => k !== 'circuit_leg' && k !== 'arrival_route' && k !== 'holding' && k !== 'reporting_point'),
+  details: (Object.keys(DETAIL_KIND_COLOR) as DetailKind[]).filter(k => k !== 'circuit_leg' && k !== 'arrival_route' && k !== 'holding' && k !== 'reporting_point' && k !== 'runway'),
 }
 
 /**
@@ -266,7 +288,7 @@ export function buildDetailsMapData(
   return {
     type: 'FeatureCollection',
     features: all.map(f => {
-      const named = f.properties.kind !== 'circuit_leg' && f.properties.kind !== 'arrival_route' && f.properties.kind !== 'holding'
+      const named = f.properties.kind !== 'circuit_leg' && f.properties.kind !== 'arrival_route' && f.properties.kind !== 'holding' && !(f.properties.kind === 'runway' && f.geometry.type === 'Point')      // a runway's end numbers are drawn by their own layer
         && (f.geometry.type === 'Point' || AREA_KINDS.has(f.properties.kind as DetailKind))
       const area = named ? mapAreaLabel(f.properties, false) : ''
       return { ...f, properties: {

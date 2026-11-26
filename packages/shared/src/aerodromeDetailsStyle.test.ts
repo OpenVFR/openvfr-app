@@ -219,3 +219,20 @@ describe('direction marks on the per-group (native) layers', () => {
     }
   })
 })
+
+describe('a runway the official data lacks (kind runway)', () => {
+  it('is parsed with its width, surface and end numbers, and drawn by runway layers, not the taxiway line', () => {
+    const fc = parseAerodromeDetails({ type: 'FeatureCollection', features: [
+      { type: 'Feature', geometry: { type: 'LineString', coordinates: [[13.668, 55.6005], [13.6799, 55.5948]] }, properties: { icao: 'ESMI', kind: 'runway', name: 'Glider strip', width_m: 30, surface: 'grass' } },
+      { type: 'Feature', geometry: { type: 'Point', coordinates: [13.669, 55.6] }, properties: { icao: 'ESMI', kind: 'runway', name: 'Glider strip 12', end: '12', brg: 130 } },
+    ] })!
+    expect(fc.features.map(f => f.properties.kind)).toEqual(['runway', 'runway'])
+    expect(fc.features[0]!.properties).toMatchObject({ width_m: 30, surface: 'GRASS' })
+    expect(fc.features[1]!.properties).toMatchObject({ end: '12', brg: 130 })
+    const data = buildDetailsMapData(fc.features, [])
+    expect(data.features.find(f => f.geometry.type === 'Point')!.properties.label).toBe('')       // the end number is not an area label
+    const ids = DETAIL_LAYERS.map(l => l.id)
+    expect(ids).toEqual(expect.arrayContaining(['ad-runway-outline', 'ad-runway-line', 'ad-runway-line-paved', 'ad-runway-end']))
+    expect(JSON.stringify(DETAIL_LAYERS.find(l => l.id === 'ad-details-line')!.filter)).toContain('runway')       // the generic line layer leaves runways out
+  })
+})

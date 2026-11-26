@@ -21,11 +21,11 @@ export { CIRCUIT_GROUP_COLOR, DETAIL_KIND_COLOR }   // the palettes live in feat
 
 export type DetailKind =
   | 'noise_sensitive' | 'avoid_area' | 'glider_area' | 'parachute_area' | 'model_area'
-  | 'circuit_leg' | 'arrival_route' | 'reporting_point' | 'holding' | 'taxiway' | 'parking' | 'other'
+  | 'circuit_leg' | 'arrival_route' | 'reporting_point' | 'holding' | 'taxiway' | 'parking' | 'runway' | 'other'
 
 const KINDS: readonly DetailKind[] = [
   'noise_sensitive', 'avoid_area', 'glider_area', 'parachute_area', 'model_area',
-  'circuit_leg', 'arrival_route', 'reporting_point', 'holding', 'taxiway', 'parking',
+  'circuit_leg', 'arrival_route', 'reporting_point', 'holding', 'taxiway', 'parking', 'runway',
 ]
 
 /** Areas a pilot keeps out of or flies differently near. */
@@ -43,6 +43,7 @@ export const DETAIL_KIND_LABEL: Record<DetailKind, string> = {
   holding: 'Holding',
   taxiway: 'Taxiway',
   parking: 'Parking',
+  runway: 'Runway',
   other: 'Other',
 }
 
@@ -137,6 +138,11 @@ export interface DetailProps {
   on_landmark?: boolean
   /** Circuit for one aircraft group only (glider, ultralight, helicopter, gyro; powered = the default colour). */
   aircraft?: string
+  /** A runway the official data lacks (kind 'runway'): the strip's width and surface, or one end's number and heading. */
+  width_m?: number
+  surface?: string
+  end?: string
+  brg?: number
   provenance?: DetailProvenance
 }
 
@@ -196,6 +202,12 @@ export function parseAerodromeDetails(raw: unknown): FeatureCollection<Geometry,
         ...(p['on_landmark'] === true ? { on_landmark: true } : {}),
         ...(kind === 'circuit_leg' && typeof p['aircraft'] === 'string' && CIRCUIT_GROUPS.includes(p['aircraft'] as CircuitGroup)
           ? { aircraft: p['aircraft'] } : {}),
+        ...(kind === 'runway' ? {
+          ...(typeof p['width_m'] === 'number' && p['width_m'] >= 5 && p['width_m'] <= 200 ? { width_m: Math.round(p['width_m']) } : {}),
+          ...(text(p['surface'], 8) ? { surface: text(p['surface'], 8)!.toUpperCase() } : {}),
+          ...(text(p['end'], 4) ? { end: text(p['end'], 4)! } : {}),
+          ...(typeof p['brg'] === 'number' && Number.isFinite(p['brg']) ? { brg: Math.round(p['brg']) % 360 } : {}),
+        } : {}),
         ...(provenance ? { provenance } : {}),
       },
     })

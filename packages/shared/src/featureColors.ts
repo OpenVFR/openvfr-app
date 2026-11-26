@@ -112,6 +112,7 @@ export const DETAIL_KIND_COLOR: Record<DetailKind, string> = {
   holding: '#0ca678',
   taxiway: '#94a3b8',
   parking: '#94a3b8',
+  runway: '#94a3b8',
   other: '#cbd5e1',
 }
 
