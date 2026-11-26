@@ -576,6 +576,8 @@ function MapScreenForCountry() {
   // which grows with a Live Activity, and the camera cut-out).
   const reservedRegions = useReservedRegions()
   const controlsX1 = windowWidth - edgeRight
+  // Banners across the top end before the control column (menu, brief, layers, locate): they must not read as part of it
+  const bannerRight = edgeRight + CONTROL_COLUMN_W + scaledTheme.space2
   // iPhone Duo cover: the clock is a vertical block in the rail on the right,
   // the strip left of it is free, so the controls start at the very top
   // instead of below a status-bar-sized inset.
@@ -2123,7 +2125,7 @@ function MapScreenForCountry() {
 
         {/* Viewed flight log banner — Logs segment "View" action on PlanScreen */}
         {selectedLog && (
-          <View style={[styles.pastTrackBanner, { top: scaledTheme.space2 + (editBannerShown ? EDIT_BANNER_H : 0) }]}>
+          <View style={[styles.pastTrackBanner, { right: bannerRight, top: scaledTheme.space2 + (editBannerShown ? EDIT_BANNER_H : 0) }]}>
             <AppIcon name="navigate" size={13} color="#c4b5fd" />
             <Text style={styles.pastTrackBannerTxt} numberOfLines={1}>
               {selectedLog.departureIcao || '?'} → {selectedLog.arrivalIcao || '?'} · {selectedLog.distanceNm.toFixed(0)} NM
@@ -2136,7 +2138,7 @@ function MapScreenForCountry() {
 
         {/* Outdated-AIRAC warning -- non-blocking, stacked under the log banner */}
         {outdatedAirac.length > 0 && dismissedAiracKey !== outdatedAiracKey && (
-          <View style={[styles.pastTrackBanner, styles.airacBanner, { top: scaledTheme.space2 + (editBannerShown ? EDIT_BANNER_H : 0) + (selectedLog ? 44 : 0) }]}>
+          <View style={[styles.pastTrackBanner, styles.airacBanner, { right: bannerRight, top: scaledTheme.space2 + (editBannerShown ? EDIT_BANNER_H : 0) + (selectedLog ? 44 : 0) }]}>
             <AppIcon name="warning" size={13} color={theme.statusWarn} />
             <Text style={styles.pastTrackBannerTxt} numberOfLines={2}>
               Airspace data outdated — {outdatedAirac.map(o => `${o.country.toUpperCase()} AIRAC ${o.cycle}`).join(', ')} (current {currentAirac}). Verify against official AIP.
@@ -2153,9 +2155,9 @@ function MapScreenForCountry() {
         {/* Runway focus (experimental aerodrome details): the sheet covers the map, so the focus outlives it and
             is ended here (or by opening another aerodrome). */}
         {circuitFocus && (
-          <View style={[styles.pastTrackBanner, styles.circuitFocusBanner, { top: scaledTheme.space2 + (editBannerShown ? EDIT_BANNER_H : 0)
+          <View style={[styles.pastTrackBanner, styles.circuitFocusBanner, { right: bannerRight, top: scaledTheme.space2 + (editBannerShown ? EDIT_BANNER_H : 0)
             + (selectedLog ? 44 : 0) + (outdatedAirac.length > 0 && dismissedAiracKey !== outdatedAiracKey ? 56 : 0) }]}>
-            <Text style={styles.pastTrackBannerTxt} numberOfLines={1}>
+            <Text style={styles.pastTrackBannerTxt} numberOfLines={2}>
               {circuitFocus.aerodrome}: only RWY {circuitFocus.runway} circuits shown
             </Text>
             <TouchableOpacity onPress={() => setCircuitFocus(null)} accessibilityLabel="Show all circuits"
