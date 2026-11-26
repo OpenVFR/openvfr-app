@@ -208,3 +208,14 @@ describe('direction marks for a loop flown both ways', () => {
     expect(old.features.find(f => f.properties.role !== 'dir')!.properties.oneWay).toBe(false)
   })
 })
+
+describe('direction marks on the per-group (native) layers', () => {
+  it('are hidden until a runway end is chosen, on every group layer', () => {
+    const dm = staticColorLayers().filter(l => l.id.startsWith('ad-circuit-dirmarks'))
+    expect(dm.length).toBeGreaterThan(1)
+    for (const l of dm) {
+      expect(JSON.stringify(layerFilter(l, null))).toContain('hidden-until-a-runway-end-is-chosen')
+      expect(JSON.stringify(layerFilter(l, { aerodrome: 'ESMI', runway: '12' }))).not.toContain('hidden-until-a-runway-end-is-chosen')
+    }
+  })
+})

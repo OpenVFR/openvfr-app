@@ -213,7 +213,7 @@ export function layerFilter(l: DetailLayerSpec, focus: CircuitFocus | null, rele
   // whose card was last opened). `undefined` = no such rule (all drawn).
   if (l.group === 'reportingPoints' && relevant) return ['all', l.filter, ['in', ['get', 'aerodrome'], ['literal', [...relevant]]]]
   // the direction marks of a loop flown both ways exist only for a chosen runway end, and only at that aerodrome
-  if (l.id === 'ad-circuit-dirmarks') {
+  if (l.id.startsWith('ad-circuit-dirmarks')) {      // startsWith: the native style splits it per aircraft group (`ad-circuit-dirmarks-glider` ...)
     return focus ? ['all', l.filter, ['==', ['get', 'aerodrome'], focus.aerodrome], ['in', `|${focus.runway}|`, ['get', 'rwys']]] : ['all', l.filter, ['==', ['get', 'role'], 'hidden-until-a-runway-end-is-chosen']]      // always false, in expression form: a bare ['==', 0, 1] can make a native renderer read the whole filter as the old filter syntax
   }
   if (!focus || l.group !== 'circuits') return l.filter
