@@ -1,5 +1,5 @@
 diff --git a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
-index 9ca09321e7068ced9a490fdd06dac7a2d8ec3949..e562f2dc1a0aa7e3190a4b7bafacb9116d04398b 100644
+index d43f4db808c2c61427a3b425241db4e7d5bb33c9..65fa82c94546ceb372096edc77366ab13972268e 100644
 --- a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
 +++ b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
 @@ -6,6 +6,7 @@ import android.app.Activity
@@ -9,8 +9,8 @@ index 9ca09321e7068ced9a490fdd06dac7a2d8ec3949..e562f2dc1a0aa7e3190a4b7bafacb911
 +import android.util.Log
  import android.view.KeyEvent
  import android.view.inputmethod.InputMethodManager
- import androidx.compose.material3.BottomSheetDefaults
-@@ -18,12 +19,17 @@ import androidx.compose.material3.rememberModalBottomSheetState
+ import androidx.compose.foundation.layout.WindowInsets
+@@ -19,6 +20,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
  import androidx.compose.runtime.Composable
  import androidx.compose.runtime.DisposableEffect
  import androidx.compose.runtime.LaunchedEffect
@@ -18,7 +18,8 @@ index 9ca09321e7068ced9a490fdd06dac7a2d8ec3949..e562f2dc1a0aa7e3190a4b7bafacb911
  import androidx.compose.runtime.rememberCoroutineScope
  import androidx.compose.ui.graphics.Color as ComposeColor
  import androidx.compose.ui.graphics.luminance
- import androidx.compose.ui.graphics.takeOrElse
+@@ -26,6 +28,10 @@ import androidx.compose.ui.graphics.takeOrElse
+ import androidx.compose.ui.platform.LocalLayoutDirection
  import androidx.compose.ui.platform.LocalView
  import androidx.compose.ui.window.DialogWindowProvider
 +import androidx.core.view.ViewCompat
@@ -28,7 +29,7 @@ index 9ca09321e7068ced9a490fdd06dac7a2d8ec3949..e562f2dc1a0aa7e3190a4b7bafacb911
  import expo.modules.kotlin.records.Field
  import expo.modules.kotlin.records.Record
  import expo.modules.kotlin.types.OptimizedRecord
-@@ -94,6 +100,69 @@ private fun ForwardKeyEventsToActivity(activity: Activity?) {
+@@ -97,6 +103,69 @@ private fun ForwardKeyEventsToActivity(activity: Activity?) {
    }
  }
  
@@ -98,7 +99,7 @@ index 9ca09321e7068ced9a490fdd06dac7a2d8ec3949..e562f2dc1a0aa7e3190a4b7bafacb911
  @Composable
  fun FunctionalComposableScope.ModalBottomSheetContent(
    props: ModalBottomSheetViewProps,
-@@ -177,6 +246,7 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
+@@ -190,6 +259,7 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
      modifier = ModifierRegistry.applyModifiers(props.modifiers, appContext, composableScope, globalEventDispatcher)
    ) {
      ForwardKeyEventsToActivity(appContext.currentActivity)
