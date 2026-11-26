@@ -69,7 +69,7 @@ function RuleGroups({ groups, onlyKey }: { groups: RuleGroup[]; onlyKey?: boolea
         return (
           <div key={g.id} className={css.ruleGroup}>
             <div className={css.ruleGroupTitle}>{g.title}</div>
-            <ul className={css.list}>{shown.map((l, i) => <li key={i} className={l.key ? css.keyRule : undefined}>{l.text}</li>)}</ul>
+            <ul className={css.list}>{shown.map((l, i) => <li key={i} className={l.key && !onlyKey ? css.keyRule : undefined}>{l.text}</li>)}</ul>
           </div>
         )
       })}

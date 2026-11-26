@@ -64,7 +64,7 @@ function RuleGroups({ groups, onlyKey, styles }: { groups: RuleGroup[]; onlyKey?
         return (
           <View key={g.id} style={styles.ruleGroup}>
             <Text style={styles.ruleGroupTitle}>{g.title}</Text>
-            {shown.map((l, i) => <Text key={i} style={[styles.item, l.key && styles.keyRule]}>{l.text}</Text>)}
+            {shown.map((l, i) => <Text key={i} style={[styles.item, l.key && !onlyKey && styles.keyRule]}>{l.text}</Text>)}
           </View>
         )
       })}
