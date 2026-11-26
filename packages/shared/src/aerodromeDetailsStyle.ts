@@ -41,6 +41,9 @@ const FONT = ['Noto Sans Regular']
 const CIRCUIT_LABEL_FONT = ['Noto Sans Medium']
 const CIRCUIT_LABEL_COLOR = '#0c4a6e'
 const AREA_LABEL_COLOR = '#1f2937'
+// A circuit leg that runs along a runway (the take-off and landing leg) must not carry its label on the runway: the label sits beside the line by more than the runway's drawn half-width
+// plus half a line of text, which grows with the zoom (a 30 m strip is about 14 px wide at zoom 16 and 24 px at 17, see the runway layers).
+const CIRCUIT_LABEL_OFFSET: Expr = ['interpolate', ['linear'], ['zoom'], 14, ['literal', [0, -1]], 16, ['literal', [0, -1.3]], 17, ['literal', [0, -1.8]], 18, ['literal', [0, -2.6]], 20, ['literal', [0, -6]]]
 const CIRCUIT_LABEL_SIZE: Expr = ['interpolate', ['linear'], ['zoom'], 11.5, 12, 14, 14]
 // A circuit for gliders, ultralights, helicopters or gyros is drawn thinner than the one for ordinary powered aircraft, so the main one stands out where several overlap.
 const ARRIVAL: Expr = ['==', ['get', 'kind'], 'arrival_route']
@@ -140,7 +143,7 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
   { id: 'ad-circuit-label', type: 'symbol', group: 'circuits', minzoom: LABEL_ZOOM,
     filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!=', ['get', 'clabel'], '']],
     layout: { 'symbol-placement': 'line', 'symbol-spacing': 420, 'text-field': ['get', 'clabel'], 'text-font': CIRCUIT_LABEL_FONT,
-      'text-size': CIRCUIT_LABEL_SIZE, 'text-offset': [0, -1], 'text-keep-upright': true, 'text-max-angle': 30 },
+      'text-size': CIRCUIT_LABEL_SIZE, 'text-offset': CIRCUIT_LABEL_OFFSET, 'text-keep-upright': true, 'text-max-angle': 30 },
     paint: { 'text-color': CIRCUIT_LABEL_COLOR, 'text-halo-color': HALO, 'text-halo-width': 2.4, 'text-halo-blur': 0.3 } },
   { id: 'ad-circuit-turn-label', type: 'symbol', group: 'circuits', minzoom: LABEL_ZOOM,
     filter: ['all', POINT, IS_CIRCUIT, ['==', ['get', 'role'], 'label']],
@@ -154,7 +157,7 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
       'line-opacity': ['case', ['get', 'pending'], 0.7, 1] } },
   // Extra reporting points and labels of areas and points (holding points: the base layer draws symbol and name)
   { id: 'ad-details-point', type: 'circle', group: 'details', minzoom: DETAILS_MIN_ZOOM,
-    filter: ['all', POINT, NOT_CIRCUIT, ['!', IS_HOLDING], ['!', IS_RP]],
+    filter: ['all', POINT, NOT_CIRCUIT, ['!', IS_HOLDING], ['!', IS_RP], ['!', IS_RUNWAY]],
     paint: { 'circle-radius': 4, 'circle-color': COLOR, 'circle-stroke-color': '#0b1220', 'circle-stroke-width': 1.2,
       'circle-opacity': ['case', ['get', 'pending'], 0.6, 1] } },
   // Reporting points of a club map / chart: the same outline triangle and name as the base layer's VFR reporting points (wp-rp), and

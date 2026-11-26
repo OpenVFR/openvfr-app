@@ -255,3 +255,17 @@ describe('a runway corrected in the review replaces the official one on the map'
     expect(JSON.stringify(withoutRunways(null, ['ESMI|12|GRASS'], 'end'))).toContain('"surface"')
   })
 })
+
+describe('a runway the review added is drawn only by the runway layers', () => {
+  it('has no generic point circle or label, and circuit labels move off the runway as the zoom grows', () => {
+    const circle = DETAIL_LAYERS.find(l => l.type === 'circle' && JSON.stringify(l.filter).includes('Point'))
+    expect(circle && JSON.stringify(circle.filter)).toContain('runway')
+    const label = DETAIL_LAYERS.find(l => l.id === 'ad-circuit-label')!
+    const off = (label.layout as Record<string, unknown>)['text-offset'] as unknown[]
+    expect(off[0]).toBe('interpolate')
+    const stops = off.slice(3)
+    expect(stops.length).toBeGreaterThanOrEqual(8)
+    const ems = stops.filter((_, i) => i % 2 === 1).map(v => Math.abs((v as unknown[])[1] as number))
+    expect([...ems].sort((a, b) => a - b)).toEqual(ems)       // never closer to the line as the runway widens
+  })
+})
