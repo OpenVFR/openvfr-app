@@ -143,6 +143,8 @@ export interface DetailProps {
   surface?: string
   end?: string
   brg?: number
+  /** The official runway this one corrects (its designator): the apps do not draw that one. */
+  replaces?: string
   provenance?: DetailProvenance
 }
 
@@ -207,6 +209,7 @@ export function parseAerodromeDetails(raw: unknown): FeatureCollection<Geometry,
           ...(text(p['surface'], 8) ? { surface: text(p['surface'], 8)!.toUpperCase() } : {}),
           ...(text(p['end'], 4) ? { end: text(p['end'], 4)! } : {}),
           ...(typeof p['brg'] === 'number' && Number.isFinite(p['brg']) ? { brg: Math.round(p['brg']) % 360 } : {}),
+          ...(text(p['replaces'], 16) ? { replaces: text(p['replaces'], 16)! } : {}),
         } : {}),
         ...(provenance ? { provenance } : {}),
       },

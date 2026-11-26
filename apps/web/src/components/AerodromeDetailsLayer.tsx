@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef } from 'react'
 import type * as maplibregl from 'maplibre-gl'
-import { DETAIL_LAYERS, isDrawnClubPoint, landmarkLabelFilter, landmarkNamesTakenByPoints, layerFilter, type CircuitFocus } from '@open-vfr/shared/aerodromeDetailsStyle'
+import { DETAIL_LAYERS, isDrawnClubPoint, landmarkLabelFilter, landmarkNamesTakenByPoints, layerFilter, replacedRunwayKeys, withoutRunways, type CircuitFocus } from '@open-vfr/shared/aerodromeDetailsStyle'
 import { useAerodromeDetailsLayer, useCircuitFocus, useRelevantAerodromes } from '../utils/aerodromeDetails'
 import { OVERLAY_BELOW_LAYERS } from '../styles/map-style'
 import { displaceReportingPoints, sameDisplacement, waypointBlockers } from '@open-vfr/shared/symbolDeclutter'
@@ -93,6 +93,18 @@ export default function AerodromeDetailsLayer({ map, circuitsVisible, holdingsVi
     const taken = landmarkNamesTakenByPoints(fc as { features: never[] } | null, relevant, reportingPointsVisible)
     map.setFilter('landmarks-label', landmarkLabelFilter(['!=', ['get', 'name'], ''], taken) as maplibregl.FilterSpecification)
   }, [map, fc, relevant, reportingPointsVisible])
+
+  // A runway a person moved or resized in the review replaces the official one: the base runway lines and end numbers of the replaced one are left out
+  const baseFilters = useRef<Record<string, unknown>>({})
+  useEffect(() => {
+    if (!map) return
+    const keys = replacedRunwayKeys(fc as { features: never[] } | null)
+    for (const [id, kind, list] of [['runways-outline', 'line', keys.lines], ['runways-line', 'line', keys.lines], ['runway-threshold-label', 'end', keys.ends]] as const) {
+      if (!map.getLayer(id)) continue
+      if (!(id in baseFilters.current)) baseFilters.current[id] = map.getFilter(id) ?? null
+      map.setFilter(id, withoutRunways(baseFilters.current[id] as never, list, kind) as maplibregl.FilterSpecification | null)
+    }
+  }, [map, fc])
 
   useEffect(() => () => { if (map) { remove(map); if (map.getLayer('landmarks-label')) map.setFilter('landmarks-label', ['!=', ['get', 'name'], '']) } }, [map])
 

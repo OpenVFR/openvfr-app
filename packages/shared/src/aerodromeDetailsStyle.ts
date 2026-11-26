@@ -243,6 +243,31 @@ export function layerFilter(l: DetailLayerSpec, focus: CircuitFocus | null, rele
     ['in', `|${focus.runway}|`, ['get', 'rwys']]]]
 }
 
+/**
+ * The official runways a drawn runway corrects (a runway a person moved or resized in the review): the base runway lines to leave out ("ESMI|12/30") and the base end numbers
+ * ("ESMI|12|GRASS": aerodrome, end, surface). `withoutRunways` puts them into a base layer's filter.
+ */
+export function replacedRunwayKeys(fc: { features: readonly Feature[] } | null | undefined): { lines: string[]; ends: string[] } {
+  const lines = new Set<string>(), ends = new Set<string>()
+  for (const f of fc?.features ?? []) {
+    const p = f.properties as Partial<DetailProps> | null
+    if (!p || p.kind !== 'runway' || !p.replaces || !p.aerodrome) continue
+    if (f.geometry.type === 'LineString') {
+      lines.add(`${p.aerodrome}|${p.replaces}`)
+      for (const e of p.replaces.split(' ')[0]!.split('/')) if (/^\d{2}[LRC]?$/.test(e)) ends.add(`${p.aerodrome}|${e}|${(p.surface ?? 'GRASS').toUpperCase()}`)
+    }
+  }
+  return { lines: [...lines], ends: [...ends] }
+}
+
+/** A base runway layer's filter with the replaced runways left out (`base` null = the layer has no filter). */
+export function withoutRunways(base: Expr | null, keys: readonly string[], kind: 'line' | 'end'): Expr | null {
+  if (!keys.length) return base
+  const key: Expr = kind === 'line' ? ['concat', ['get', 'icao'], '|', ['get', 'designator']] : ['concat', ['get', 'icao'], '|', ['get', 'id'], '|', ['get', 'surface']]
+  const hide: Expr = ['!', ['in', key, ['literal', [...keys]]]]
+  return base ? ['all', base, hide] : hide
+}
+
 /** Is this reporting point drawn, given the aerodromes in `relevant` (`undefined` = the rule is off: all are drawn). */
 export function isDrawnClubPoint(f: Feature, relevant?: readonly string[]): boolean {
   if (!relevant) return true

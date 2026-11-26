@@ -78,7 +78,7 @@ import { ChartOverlayLayer } from './ChartOverlay'
 import { overlayGeometry } from '@open-vfr/shared/chartsIndex'
 import { cornersBounds } from '@open-vfr/shared/chartDocument'
 import { getChartUiState, useChartFitToken } from '../utils/charts'
-import { buildDetailsMapData, staticColorLayers, layerFilter, isDrawnClubPoint, LABEL_ANCHORS, landmarkLabelFilter, landmarkNamesTakenByPoints } from '@open-vfr/shared/aerodromeDetailsStyle'
+import { buildDetailsMapData, staticColorLayers, layerFilter, isDrawnClubPoint, LABEL_ANCHORS, landmarkLabelFilter, landmarkNamesTakenByPoints, replacedRunwayKeys, withoutRunways } from '@open-vfr/shared/aerodromeDetailsStyle'
 import { getCircuitFocus, setCircuitFocus, useCircuitFocus } from '../utils/circuitFocus'
 import { useRelevantAerodromes } from '../utils/relevantAerodrome'
 import { setCameraView, useCameraView } from '../utils/cameraView'
@@ -1272,6 +1272,8 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
   const landmarkNamesTaken = React.useMemo(
     () => landmarkNamesTakenByPoints(detailsData, relevantForLabels, !!showVfrWaypoints), [detailsData, relevantForLabels, showVfrWaypoints])
   const ceilingFilter = ['<=', ['get', 'lower_ft'], airspaceCeilingFt]
+  // the official runways a person corrected in the review are not drawn (the corrected one is, from the details)
+  const replacedRw = React.useMemo(() => replacedRunwayKeys(detailsData), [detailsData])
 
   // Per-class filters combined with ceiling
   const mkFilter = (classExpr: unknown[]) => ['all', ceilingFilter, classExpr] as unknown[]
@@ -1631,6 +1633,7 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
         <GeoJSONSource id="ofm-runways" data={runwaysData}>
             <Layer
               id="runways-outline"
+              filter={withoutRunways(null, replacedRw.lines, 'line') as any}
               type="line"
               layout={{ visibility: showRunways ? 'visible' : 'none', 'line-cap': 'butt' }}
               minzoom={11}
@@ -1649,7 +1652,7 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
               <Layer
                 key={rs.k}
                 id={`runways-line-${rs.k}`}
-                filter={rs.f as any}
+                filter={withoutRunways(rs.f as any, replacedRw.lines, 'line') as any}
                 type="line"
                 layout={{ visibility: showRunways ? 'visible' : 'none', 'line-cap': 'butt' }}
                 minzoom={11}
@@ -1989,6 +1992,7 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
         <GeoJSONSource id="ofm-runway-thresholds" data={runwayThresholdsData}>
           <Layer
             id="runway-threshold-label"
+            filter={withoutRunways(null, replacedRw.ends, 'end') as any}
             type="symbol"
             minzoom={12}
             layout={{

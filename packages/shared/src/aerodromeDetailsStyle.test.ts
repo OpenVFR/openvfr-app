@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DETAIL_LAYERS, staticColorLayers, layerFilter, buildDetailsMapData, circuitLabel, mapAreaLabel, belowText, CIRCUIT_LAYER_IDS, LABEL_ANCHORS, landmarkLabelFilter, landmarkNamesTakenByPoints } from './aerodromeDetailsStyle'
+import { replacedRunwayKeys, withoutRunways, DETAIL_LAYERS, staticColorLayers, layerFilter, buildDetailsMapData, circuitLabel, mapAreaLabel, belowText, CIRCUIT_LAYER_IDS, LABEL_ANCHORS, landmarkLabelFilter, landmarkNamesTakenByPoints } from './aerodromeDetailsStyle'
 import { DETAIL_KIND_COLOR, CIRCUIT_GROUP_COLOR, parseAerodromeDetails, schematicCircuitFeatures, localAreaInfo } from './aerodromeDetails'
 
 describe('aerodromeDetailsStyle', () => {
@@ -234,5 +234,24 @@ describe('a runway the official data lacks (kind runway)', () => {
     const ids = DETAIL_LAYERS.map(l => l.id)
     expect(ids).toEqual(expect.arrayContaining(['ad-runway-outline', 'ad-runway-line', 'ad-runway-line-paved', 'ad-runway-end']))
     expect(JSON.stringify(DETAIL_LAYERS.find(l => l.id === 'ad-details-line')!.filter)).toContain('runway')       // the generic line layer leaves runways out
+  })
+})
+
+describe('a runway corrected in the review replaces the official one on the map', () => {
+  const fc = { features: [
+    { type: 'Feature', geometry: { type: 'LineString', coordinates: [[13, 55], [13.01, 55]] }, properties: { aerodrome: 'ESMI', kind: 'runway', replaces: '12/30', surface: 'GRASS' } },
+    { type: 'Feature', geometry: { type: 'Point', coordinates: [13, 55] }, properties: { aerodrome: 'ESMI', kind: 'runway', replaces: '12/30', end: '12' } },
+    { type: 'Feature', geometry: { type: 'LineString', coordinates: [[13, 55], [13.01, 55]] }, properties: { aerodrome: 'ESXX', kind: 'runway' } },
+  ] } as never
+  it('names the base lines and end numbers to leave out, and only for corrections', () => {
+    expect(replacedRunwayKeys(fc)).toEqual({ lines: ['ESMI|12/30'], ends: ['ESMI|12|GRASS', 'ESMI|30|GRASS'] })
+    expect(replacedRunwayKeys(null)).toEqual({ lines: [], ends: [] })
+  })
+  it('puts them into a layer filter without changing a layer that has none to hide', () => {
+    expect(withoutRunways(null, [], 'line')).toBeNull()
+    const base = ['==', ['get', 'surface'], 'GRASS'] as never
+    expect(withoutRunways(base, [], 'line')).toBe(base)
+    expect(JSON.stringify(withoutRunways(base, ['ESMI|12/30'], 'line'))).toContain('ESMI|12/30')
+    expect(JSON.stringify(withoutRunways(null, ['ESMI|12|GRASS'], 'end'))).toContain('"surface"')
   })
 })

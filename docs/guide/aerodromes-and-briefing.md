@@ -70,6 +70,8 @@ them (from zoom 9, with more detail as you zoom in):
   have none stated ("Not stated for RWY 14, 04, 22. The ICAO standard is
   left-hand unless published otherwise."). No arrow is drawn for a runway
   nobody published a direction for.
+  A runway the official data lacks (a parallel glider strip beside the powered runway) is drawn from the reviewed club or map data, with its end numbers; a runway that was
+  corrected in the review replaces the official one on the map.
   The **Circuits** list in the card is grouped by runway end, with a
   turn glyph for each hand ("RWY 12 ↶ left-hand; ↷ right-hand · gliders"),
   and states the circuit height once when it is the same everywhere. A
